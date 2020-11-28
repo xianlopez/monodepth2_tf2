@@ -76,7 +76,7 @@ def transformation_from_parameters_inv(axisangle, translation):
 def backproject(depth, Kinv):
     # depth: (batch_size, h, w, 1)
     # Kinv: (3, 3)
-    # TODO: Maybe some things can be pre-computed here.
+    # TODO: Maybe some things here can be pre-computed.
     batch_size, h, w, _ = depth.shape
     x = tf.cast(tf.range(w), tf.float32)
     y = tf.cast(tf.range(h), tf.float32)
@@ -106,7 +106,7 @@ def project(points3d_hom, K, Tcw):
     return pixel_coords  # (batch_size, h, w, 2)
 
 
-def evaluate_tensor_on_grid(input_tensor, x, y):
+def evaluate_tensor_on_xy_grid(input_tensor, x, y):
     # input_tensor: (batch_size, height, width, nchannels)
     # x: (batch_size, height, width)
     # y: (batch_size, height, width)
@@ -116,11 +116,6 @@ def evaluate_tensor_on_grid(input_tensor, x, y):
     batch_idx = tf.tile(batch_idx, (1, height, width))
     indices = tf.stack([batch_idx, y, x], axis=-1)  # (batch_size, height, width, 3)
     values = tf.gather_nd(input_tensor, indices)  # (batch_size, height, width, nchannels)
-    assert len(values.shape) == 4
-    assert values.shape[0] == batch_size
-    assert values.shape[1] == height
-    assert values.shape[2] == width
-    assert values.shape[3] == nchannels
     return values
 
 
@@ -150,10 +145,10 @@ def bilinear_interpolation(input_tensor, sampling_points):
     y1 = tf.clip_by_value(y1, 0, height - 1)  # (batch_size, height, width)
 
     # Get values at input points:
-    values_x0y0 = evaluate_tensor_on_grid(input_tensor, x0, y0)
-    values_x0y1 = evaluate_tensor_on_grid(input_tensor, x0, y1)
-    values_x1y0 = evaluate_tensor_on_grid(input_tensor, x1, y0)
-    values_x1y1 = evaluate_tensor_on_grid(input_tensor, x1, y1)  # (batch_size, height, width, nchannels)
+    values_x0y0 = evaluate_tensor_on_xy_grid(input_tensor, x0, y0)
+    values_x0y1 = evaluate_tensor_on_xy_grid(input_tensor, x0, y1)
+    values_x1y0 = evaluate_tensor_on_xy_grid(input_tensor, x1, y0)
+    values_x1y1 = evaluate_tensor_on_xy_grid(input_tensor, x1, y1)  # (batch_size, height, width, nchannels)
 
     # Cast pixel coordinates to float:
     x0 = tf.cast(x0, tf.float32)
@@ -162,10 +157,12 @@ def bilinear_interpolation(input_tensor, sampling_points):
     y1 = tf.cast(y1, tf.float32)
 
     # Compute interpolation weights:
-    weight_x0y0 = tf.expand_dims((x1 - x) * (y1 - y), axis=-1)
-    weight_x0y1 = tf.expand_dims((x1 - x) * (y - y0), axis=-1)
-    weight_x1y0 = tf.expand_dims((x - x0) * (y1 - y), axis=-1)
-    weight_x1y1 = tf.expand_dims((x - x0) * (y - y0), axis=-1)  # (batch_size, height, width, 1)
+    x1minusx = x1 - x
+    y1minusy = y1 - y
+    weight_x0y0 = tf.expand_dims(x1minusx * y1minusy, axis=-1)
+    weight_x0y1 = tf.expand_dims(x1minusx * (1.0 - y1minusy), axis=-1)
+    weight_x1y0 = tf.expand_dims((1.0 - x1minusx) * y1minusy, axis=-1)
+    weight_x1y1 = tf.expand_dims((1.0 - x1minusx) * (1.0 - y1minusy), axis=-1)  # (batch_size, height, width, 1)
 
     return tf.math.accumulate_n([weight_x0y0 * values_x0y0, weight_x0y1 * values_x0y1,
                                  weight_x1y0 * values_x1y0, weight_x1y1 * values_x1y1])  # (batch_size, height, width, nchannels)

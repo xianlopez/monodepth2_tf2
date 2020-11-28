@@ -1,6 +1,7 @@
 import tensorflow as tf
 from scipy.spatial.transform import Rotation as R
 import numpy as np
+import cv2
 
 import transformations
 
@@ -172,9 +173,181 @@ def test_project():
     assert tf.norm(pixel_coords_tf - pixel_coords) < 1e-4
 
 
+def test_evaluate_tensor_on_xy_grid():
+    print('test_evaluate_tensor_on_xy_grid')
+    batch_size = 2
+    height = 3
+    width = 4
+    nchannels = 3
+    input_values = np.random.rand(batch_size, height, width, nchannels)
+    x = np.zeros(shape=(batch_size, height, width), dtype=np.int32)
+    y = np.zeros(shape=(batch_size, height, width), dtype=np.int32)
+    # Element (0, 0, 0) must be input_values[0, 0, 1, :]:
+    x[0, 0, 0] = 1
+    # Element (0, 1, 0) must be input_values[0, 0, 2, :]:
+    x[0, 1, 0] = 2
+    y[0, 1, 0] = 0
+    # Element (1, 2, 3) must be input_values[1, 1, 3, :]:
+    x[1, 2, 3] = 3
+    y[1, 2, 3] = 1
+    # Element (1, 1, 2) must be input_values[1, 1, 2, :]:
+    x[1, 1, 2] = 2
+    y[1, 1, 2] = 1
+    # Element (1, 0, 3) must be input_values[1, 1, 2, :]:
+    x[1, 0, 3] = 2
+    y[1, 0, 3] = 1
+    # The rest of the elements should be (0, 0) on its corresponding batch.
+
+    input_tensor = tf.constant(input_values, tf.float32)
+    x_tf = tf.constant(x, tf.int32)
+    y_tf = tf.constant(y, tf.int32)
+    output_tensor = transformations.evaluate_tensor_on_xy_grid(input_tensor, x_tf, y_tf)
+
+    assert output_tensor.shape == (batch_size, height, width, nchannels)
+    for b in range(batch_size):
+        for i in range(height):
+            for j in range(width):
+                if b == 0 and i == 0 and j == 0:
+                    assert tf.norm(output_tensor[b, i, j, :] - input_values[0, 0, 1, :]) < 1e-6
+                elif b == 0 and i == 1 and j == 0:
+                    assert tf.norm(output_tensor[b, i, j, :] - input_values[0, 0, 2, :]) < 1e-6
+                elif b == 1 and i == 2 and j == 3:
+                    assert tf.norm(output_tensor[b, i, j, :] - input_values[1, 1, 3, :]) < 1e-6
+                elif b == 1 and i == 1 and j == 2:
+                    assert tf.norm(output_tensor[b, i, j, :] - input_values[1, 1, 2, :]) < 1e-6
+                elif b == 1 and i == 0 and j == 3:
+                    assert tf.norm(output_tensor[b, i, j, :] - input_values[1, 1, 2, :]) < 1e-6
+                else:
+                    assert tf.norm(output_tensor[b, i, j, :] - input_values[b, 0, 0, :]) < 1e-6
 
 
+def interpolate(A, x, y):
+    # A: (height, width)
+    # A must be indexed as A(y, x)
+    x1 = int(np.floor(x))
+    x2 = x1 + 1
+    y1 = int(np.floor(y))
+    y2 = y1 + 1
+    output = (y2 - y) * ((x2 - x) * A[y1, x1] + (x - x1) * A[y1, x2]) + \
+             (y - y1) * ((x2 - x) * A[y2, x1] + (x - x1) * A[y2, x2])
+    return output
 
+
+def test_bilinear_interpolation():
+    print('test_bilinear_interpolation')
+    batch_size = 2
+    height = 5
+    width = 4
+    nchannels = 3
+    input_tensor = np.random.rand(batch_size, height, width, nchannels)
+    sampling_points = np.zeros((batch_size, height, width, 2), dtype=np.float32)
+    for i in range(height):
+        for j in range(width):
+            sampling_points[:, i, j, 0] = j
+            sampling_points[:, i, j, 1] = i
+    # Two points outside (to test the border method):
+    sampling_points[0, 1, 1, 0] = 7
+    sampling_points[0, 3, 3, 1] = -0.5
+    # One point just changed to another exact position (repetition):
+    sampling_points[1, 2, 3, :] = sampling_points[1, 2, 2, :]
+    # A few points not falling on original locations (to test interpolation):
+    sampling_points[0, 0, 0, :] = [0.1, 0.2]
+    sampling_points[1, 4, 2, :] = [2.7, 3.5]
+    sampling_points[1, 3, 1, :] = [2.2, 0]
+    sampling_points[0, 0, 1, :] = [2.9, 3.6]
+
+    # Expected values for the ones that need interpolation:
+    expected000 = [interpolate(input_tensor[0, :, :, 0], 0.1, 0.2),
+                   interpolate(input_tensor[0, :, :, 1], 0.1, 0.2),
+                   interpolate(input_tensor[0, :, :, 2], 0.1, 0.2)]
+    expected142 = [interpolate(input_tensor[1, :, :, 0], 2.7, 3.5),
+                   interpolate(input_tensor[1, :, :, 1], 2.7, 3.5),
+                   interpolate(input_tensor[1, :, :, 2], 2.7, 3.5)]
+    expected131 = [interpolate(input_tensor[1, :, :, 0], 2.2, 0),
+                   interpolate(input_tensor[1, :, :, 1], 2.2, 0),
+                   interpolate(input_tensor[1, :, :, 2], 2.2, 0)]
+    expected001 = [interpolate(input_tensor[0, :, :, 0], 2.9, 3.6),
+                   interpolate(input_tensor[0, :, :, 1], 2.9, 3.6),
+                   interpolate(input_tensor[0, :, :, 2], 2.9, 3.6)]
+
+    input_tensor_tf = tf.constant(input_tensor, tf.float32)
+    sampling_points_tf = tf.constant(sampling_points, tf.float32)
+    output_tensor_tf = transformations.bilinear_interpolation(input_tensor_tf, sampling_points_tf)
+
+    assert output_tensor_tf.shape == (batch_size, height, width, nchannels)
+    assert tf.norm(output_tensor_tf[1, 0, 0, :] - input_tensor[1, 0, 0, :]) < 1e-6
+    assert tf.norm(output_tensor_tf[0, 1, 1, :] - input_tensor[0, 1, -1, :]) < 1e-6
+    assert tf.norm(output_tensor_tf[0, 3, 3, :] - input_tensor[0, 0, 3, :]) < 1e-6
+    assert tf.norm(output_tensor_tf[1, 2, 3, :] - input_tensor[1, 2, 2, :]) < 1e-6
+    assert tf.norm(output_tensor_tf[0, 0, 0, :] - expected000) < 1e-6
+    assert tf.norm(output_tensor_tf[1, 4, 2, :] - expected142) < 1e-6
+    assert tf.norm(output_tensor_tf[1, 3, 1, :] - expected131) < 1e-6
+    assert tf.norm(output_tensor_tf[0, 0, 1, :] - expected001) < 1e-6
+
+
+def test_warp_images():
+    print('test_warp_images')
+    test_img = cv2.imread('test_image_1.jpg')  # Black border
+    # test_img = cv2.imread('test_image_2.jpg')  # Non black border
+    cv2.imshow('original image', test_img)
+
+    height, width, _ = test_img.shape
+    batch_size = 7
+
+    depth = np.ones((height, width, 1), np.float32) * 5.0
+    K = np.eye(3, dtype=np.float32)
+    K[0, 0] = 50  # fx
+    K[1, 1] = 50  # fy
+    K[0, 2] = width / 2.0  # cx
+    K[1, 2] = height / 2.0  # cy
+    Kinv = np.linalg.inv(K)
+
+    # Camera 0 (identity):
+    translation0 = [0.0, 0.0, 0.0]
+    axisangle0 = [0.0, 0.0, 0.0]
+    # Camera 1 (moving forward):
+    translation1 = [0.0, 0.0, 1.0]
+    axisangle1 = [0.0, 0.0, 0.0]
+    # Camera 2 (moving backwards):
+    translation2 = [0.0, 0.0, -1.0]
+    axisangle2 = [0.0, 0.0, 0.0]
+    # Camera 3 (lateral motion):
+    translation3 = [0.5, 0.0, 0.0]
+    axisangle3 = [0.0, 0.0, 0.0]
+    # Camera 4 (rotation -30 degrees):
+    translation4 = [0.0, 0.0, 0.0]
+    axisangle4 = [0.0, 0.0, -30.0 / 180.0 * np.pi]
+    # Camera 5 (rotation 90 degrees):
+    translation5 = [0.0, 0.0, 0.0]
+    axisangle5 = [0.0, 0.0, np.pi / 2.0]
+    # Camera 6 (tilted and moved downwards):
+    translation6 = [0.0, 2.0, 0.0]
+    axisangle6 = [21.0814 / 180.0 * np.pi, 0.0, 0.0]
+
+    test_img_tf = tf.constant(np.tile(np.expand_dims(test_img, axis=0), [batch_size, 1, 1, 1]), dtype=tf.float32)
+    depth_tf = tf.constant(np.tile(np.expand_dims(depth, axis=0), [batch_size, 1, 1, 1]))
+    K_tf = tf.constant(K)
+    Kinv_tf = tf.constant(Kinv)
+    axisangle_tf = tf.constant(np.stack([axisangle0, axisangle1, axisangle2, axisangle3,
+                                         axisangle4, axisangle5, axisangle6], axis=0), dtype=tf.float32)
+    translation_tf = tf.constant(np.stack([translation0, translation1, translation2, translation3,
+                                           translation4, translation5, translation6], axis=0), dtype=tf.float32)
+
+    new_images = transformations.warp_images(test_img_tf, depth_tf, K_tf, Kinv_tf, axisangle_tf, translation_tf, False)
+
+    assert new_images.shape == (batch_size, height, width, 3)
+
+    new_images = new_images / 255.0
+
+    cv2.imshow('identity', new_images[0, :, :, :].numpy())
+    cv2.imshow('moving forward', new_images[1, :, :, :].numpy())
+    cv2.imshow('moving backwards', new_images[2, :, :, :].numpy())
+    cv2.imshow('lateral motion', new_images[3, :, :, :].numpy())
+    cv2.imshow('rotation -30 degrees', new_images[4, :, :, :].numpy())
+    cv2.imshow('rotation 90 degrees', new_images[5, :, :, :].numpy())
+    cv2.imshow('tilted and moved downwards', new_images[6, :, :, :].numpy())
+
+    cv2.waitKey()
 
 
 if __name__ == '__main__':
@@ -183,3 +356,6 @@ if __name__ == '__main__':
     test_transformation_from_parameters_inv()
     test_backproject()
     test_project()
+    test_evaluate_tensor_on_xy_grid()
+    test_bilinear_interpolation()
+    test_warp_images()
