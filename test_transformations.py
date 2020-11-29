@@ -289,6 +289,7 @@ def test_warp_images():
     print('test_warp_images')
     test_img = cv2.imread('test_image_1.jpg')  # Black border
     # test_img = cv2.imread('test_image_2.jpg')  # Non black border
+    test_img = test_img.astype(np.float32) / 255.0
     cv2.imshow('original image', test_img)
 
     height, width, _ = test_img.shape
@@ -336,8 +337,6 @@ def test_warp_images():
     new_images = transformations.warp_images(test_img_tf, depth_tf, K_tf, Kinv_tf, axisangle_tf, translation_tf, False)
 
     assert new_images.shape == (batch_size, height, width, 3)
-
-    new_images = new_images / 255.0
 
     cv2.imshow('identity', new_images[0, :, :, :].numpy())
     cv2.imshow('moving forward', new_images[1, :, :, :].numpy())

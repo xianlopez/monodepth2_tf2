@@ -26,7 +26,7 @@ def SSIM(x, y):
     SSIM_loss = tf.clip_by_value((1.0 - SSIM_n / SSIM_d) / 2.0, 0.0, 1.0)  # (batch_size, height, width, 3)
     SSIM_loss = tf.reduce_mean(SSIM_loss, axis=-1)  # (batch_size, height, width)
     assert SSIM_loss.shape == x.shape[:3]
-    return
+    return SSIM_loss
 
 
 def compute_reprojection_loss(x, y):
@@ -60,7 +60,7 @@ def compute_smoothness_loss(disparity, image):
     return tf.reduce_mean(grad_disp_i) + tf.reduce_mean(grad_disp_j)  # ()
 
 
-def myloss(y_true, y_pred):
+def compute_loss(y_true, y_pred):
     # y_true: contains the input images, concatenated over the channels dimension: (batch_size, height, width, 3 * 3)
     # The images are in temporal order. Let's call them "previous" (p), "current" (c) and "next" (n).
     # y_pred: list with (disp0, disp1, disp2, disp3, pose_net_output)
