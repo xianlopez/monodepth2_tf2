@@ -18,10 +18,11 @@ kitt_path = '/home/xian/KITTI'
 batch_size = 12
 train_dataset = DataReader(kitt_path, batch_size)
 
+tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir='./logs', update_freq='batch')
+
 # TODO: Data augmentation
 # TODO: Visualization
-# TODO: Tensorboard
 # TODO: Saving
 # TODO: Resnet18
 
-model.fit(train_dataset, epochs=20)
+model.fit(train_dataset, epochs=20, callbacks=[tensorboard_callback])
