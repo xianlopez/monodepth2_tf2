@@ -35,6 +35,8 @@ def get_images_paths(kitti_path):
 class DataReader(tf.keras.utils.Sequence):
     def __init__(self, kitt_path, batch_size):
         self.path_trios = get_images_paths(kitt_path)
+        # self.path_trios = self.path_trios[:100]
+        random.shuffle(self.path_trios)
         self.batch_size = batch_size
 
     def __len__(self):
@@ -62,6 +64,4 @@ class DataReader(tf.keras.utils.Sequence):
         return x, x  # (batch_size, height, width, 9)
 
     def on_epoch_end(self):
-        if self.shuffle == True:
-            print('Suffling data')
-            random.shuffle(self.path_trios)
+        random.shuffle(self.path_trios)
