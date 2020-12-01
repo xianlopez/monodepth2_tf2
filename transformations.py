@@ -53,7 +53,7 @@ def rotation_from_axisangle(axisangle):
 def transformation_from_parameters(axisangle, translation):
     # axisangle: (batch_size, 3)
     # translation: (batch_size, 3)
-    batch_size = translation.shape[0]
+    batch_size = tf.shape(translation)[0]
     rotation = rotation_from_axisangle(axisangle)  # (batch_size, 3, 3)
     aux1 = tf.concat([rotation, tf.zeros((batch_size, 1, 3), tf.float32)], axis=1)  # (batch_size, 4, 3)
     aux2 = tf.concat([translation, tf.ones((batch_size, 1), tf.float32)], axis=1)  # (batch_size, 4)
@@ -64,7 +64,7 @@ def transformation_from_parameters(axisangle, translation):
 def transformation_from_parameters_inv(axisangle, translation):
     # axisangle: (batch_size, 3)
     # translation: (batch_size, 3)
-    batch_size = translation.shape[0]
+    batch_size = tf.shape(translation)[0]
     rotation = tf.transpose(rotation_from_axisangle(axisangle), perm=[0, 2, 1])  # (batch_size, 3, 3)
     translation = -tf.linalg.matvec(rotation, translation)  # (batch_size, 3)
     aux1 = tf.concat([rotation, tf.zeros((batch_size, 1, 3), tf.float32)], axis=1)  # (batch_size, 4, 3)
@@ -77,7 +77,8 @@ def backproject(depth, Kinv):
     # depth: (batch_size, h, w, 1)
     # Kinv: (3, 3)
     # TODO: Maybe some things here can be pre-computed.
-    batch_size, h, w, _ = depth.shape
+    _, h, w, _ = depth.shape
+    batch_size = tf.shape(depth)[0]
     x = tf.cast(tf.range(w), tf.float32)
     y = tf.cast(tf.range(h), tf.float32)
     X, Y = tf.meshgrid(x, y)  # (h, w)
@@ -96,7 +97,7 @@ def project(points3d_hom, K, Tcw):
     # Tcw: (batch_size, 4, 4) Camera pose.
     K_ext = tf.concat([K, tf.zeros((3, 1), tf.float32)], axis=1)  # (3, 4)
     P = tf.matmul(K_ext, Tcw)  # (batch_size, 3, 4)
-    assert P.shape == (Tcw.shape[0], 3, 4)
+    assert tuple(P.shape) == (Tcw.shape[0], 3, 4)
     # TODO: which of these options is faster?
     # cam_coords_hom = tf.linalg.matvec(Tcw, points3d_hom)  # (batch_size, h, w, 4)
     # pixel_coords_hom = tf.linalg.matvec(K_ext, cam_coords_hom)  # (batch_size, h, w, 3)
@@ -110,7 +111,8 @@ def evaluate_tensor_on_xy_grid(input_tensor, x, y):
     # input_tensor: (batch_size, height, width, nchannels)
     # x: (batch_size, height, width)
     # y: (batch_size, height, width)
-    batch_size, height, width, nchannels = input_tensor.shape
+    _, height, width, nchannels = input_tensor.shape
+    batch_size = tf.shape(input_tensor)[0]
     batch_idx = tf.range(0, batch_size)
     batch_idx = tf.reshape(batch_idx, (batch_size, 1, 1))
     batch_idx = tf.tile(batch_idx, (1, height, width))
@@ -180,9 +182,9 @@ def warp_images(imgs, depth, K, Kinv, axisangle, translation, invert):
     assert len(depth.shape) == 4
     batch_size, height, width, nchannels = imgs.shape
     assert nchannels == 3
-    assert depth.shape == (batch_size, height, width, 1)
-    assert axisangle.shape == (batch_size, 3)
-    assert translation.shape == (batch_size, 3)
+    assert tuple(depth.shape) == (batch_size, height, width, 1)
+    assert tuple(axisangle.shape) == (batch_size, 3)
+    assert tuple(translation.shape) == (batch_size, 3)
 
     # We consider the images come from a camera in the reference frame (world, w)
     # Tcw is therefore the transformation that will convert the images to the pose

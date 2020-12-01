@@ -1,8 +1,7 @@
 import tensorflow as tf
 from tensorflow.keras.layers import Conv2D, Lambda
-
-height = 192
-width = 640
+from data_reader import height, width
+from layers import WarpInputs
 
 
 def upsampling_block(x, idx, nchannels, skip_connection, compute_disp):
@@ -38,12 +37,14 @@ def build_depth_net(inputs):
     x, disp1 = upsampling_block(x, 4, 32, conv1_out, True)  # (96, 320, 32)
     x, disp0 = upsampling_block(x, 5, 16, None, True)  # (192, 640, 16)
 
-    # # Upsample the disparities:
-    # disp1 = tf.keras.layers.UpSampling2D(size=(2, 2), name="disp1_up")(disp1)
-    # disp2 = tf.keras.layers.UpSampling2D(size=(4, 4), name="disp2_up")(disp2)
-    # disp3 = tf.keras.layers.UpSampling2D(size=(8, 8), name="disp3_up")(disp3)
+    # Upsample the disparities:
+    disp1 = tf.keras.layers.UpSampling2D(size=(2, 2), name="disp1_up")(disp1)
+    disp2 = tf.keras.layers.UpSampling2D(size=(4, 4), name="disp2_up")(disp2)
+    disp3 = tf.keras.layers.UpSampling2D(size=(8, 8), name="disp3_up")(disp3)
 
     disparities = [disp0, disp1, disp2, disp3]
+
+    # TODO: Add smoothness loss on disparities
 
     return tf.keras.Model(inputs=inputs, outputs=disparities, name='depth_net')
 
@@ -64,10 +65,14 @@ def build_pose_net(inputs):
     return tf.keras.Model(inputs=inputs, outputs=[x])
 
 
-def training_model():
+
+def training_model(K):
     inputs = tf.keras.Input(shape=(height, width, 3 * 3), name='input')
     pose_net = build_pose_net(inputs)  # (6 * (3 - 1))
     depth_net = build_depth_net(inputs)  # [disp0, disp1, disp2, disp3]
-    outputs = pose_net.outputs
-    outputs.extend(depth_net.outputs)
-    return tf.keras.Model(inputs=inputs, outputs=outputs)
+
+    disp0, disp1, disp2, disp3 = depth_net.outputs
+    warping_input = [inputs, pose_net.output, disp0, disp1, disp2, disp3]
+    warped_images = WarpInputs(K)(warping_input)  # (batch_size, height, width, 3 * 2 * 4)
+
+    return tf.keras.Model(inputs=inputs, outputs=warped_images)
