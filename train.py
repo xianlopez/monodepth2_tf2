@@ -25,4 +25,4 @@ tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir='./logs', update_f
 # TODO: Saving
 # TODO: Resnet18
 
-model.fit(train_dataset, epochs=20, callbacks=[tensorboard_callback])
+model.fit(train_dataset, epochs=20, callbacks=[tensorboard_callback], use_multiprocessing=True, workers=6)
