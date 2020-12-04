@@ -4,6 +4,9 @@ from data_reader import height, width
 from layers import WarpInputs
 
 
+# TODO: Subtract mean to images before processing?
+
+
 def upsampling_block(x, idx, nchannels, skip_connection, compute_disp):
     # TODO: Using 1 output channel in the first convolution could save a lot of parameters
     x = Conv2D(nchannels, 3, padding='same', activation='elu', name='dec_b' + str(idx) + '_conv1')(x)
