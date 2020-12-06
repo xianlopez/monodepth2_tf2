@@ -32,12 +32,13 @@ def compute_reprojection_loss(x, y):
 def compute_loss(y_true, y_pred):
     # y_true: contains the input images, concatenated over the channels dimension: (batch_size, height, width, 3 * 3)
     # The images are in temporal order. Let's call them "previous" (p), "current" (c) and "next" (n).
-    # y_pred: (batch_size, height, width, 3 * 2 * 4) The warped images, in the following order:
+    # y_pred: (batch_size, height, width, 3 * 2 * 4 + 1) The warped images and the depth prediction,
+    # in the following order:
     # (scale0_previous, scale0_next, scale1_previous, scale1_next, scale2_previous, scale2_next,
-    # scale3_previous, scale3_next)
+    # scale3_previous, scale3_next, depth)
 
     n_disparities = 4
-    assert y_pred.shape[3] == 3 * 2 * n_disparities
+    assert y_pred.shape[3] == 3 * 2 * n_disparities + 1
 
     _, height, width, _ = y_true.shape
     previous_imgs = y_true[:, :, :, :3]
@@ -50,7 +51,7 @@ def compute_loss(y_true, y_pred):
 
     losses_on_scales = []
     for scale_idx in range(n_disparities):
-        # Note: smoothness loss was added in the network definition. TODO
+        # Note: smoothness loss was added in the network definition.
         reprojection_losses = []
         start_idx = scale_idx * 6
         prev_imgs_warped = y_pred[..., start_idx:(start_idx+3)]

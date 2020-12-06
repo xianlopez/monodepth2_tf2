@@ -11,9 +11,9 @@ from model import training_model
 from loss import compute_loss
 from data_reader import DataReader, height, width
 import tools
+from drawing import display_training
 
 # TODO: Data augmentation
-# TODO: Visualization
 # TODO: Resnet18
 
 
@@ -42,11 +42,11 @@ def build_train_step_fun(model, loss_fun, optimizer, train_summary_writer):
         optimizer.apply_gradients(zip(grads, model.trainable_variables))
         with train_summary_writer.as_default():
             tf.summary.scalar('loss', loss_value, step=step)
-        return loss_value
+        return loss_value, net_output
     return train_step_fun
 
 
-def train(kitti_path, ckpt_idx, batch_size, nepochs, initial_lr, epoch_lr_pairs):
+def train(kitti_path, ckpt_idx, batch_size, nepochs, initial_lr, epoch_lr_pairs, period_display):
     model = training_model(K)
     optimizer = tf.optimizers.Adam(learning_rate=initial_lr)
     # model.compile(loss=compute_loss, optimizer=optimizer)
@@ -75,10 +75,12 @@ def train(kitti_path, ckpt_idx, batch_size, nepochs, initial_lr, epoch_lr_pairs)
         epoch_start = datetime.now()
         for batch_idx in range(train_dataset.__len__()):
             batch_imgs, _ = train_dataset.__getitem__(batch_idx)
-            loss_value = train_step(tf.constant(batch_imgs, tf.float32), tf.constant(step, tf.int64))
+            loss_value, net_output = train_step(tf.constant(batch_imgs, tf.float32), tf.constant(step, tf.int64))
             train_summary_writer.flush()
             stdout.write("\rbatch %d/%d, loss: %.2e    " % (batch_idx + 1, train_dataset.__len__(), loss_value.numpy()))
             stdout.flush()
+            if (batch_idx + 1) % period_display == 0:
+                display_training(batch_imgs, net_output)
             step += 1
         stdout.write('\n')
         train_dataset.on_epoch_end()
@@ -102,8 +104,11 @@ if __name__ == '__main__':
     parser.add_argument('--lr_changes', default='[(15, 1e-5)]',
                         help='changes in learning rate, as a list of tuples where the first element is the epoch from '
                              'which the second one (learning rate) applies')
+    parser.add_argument('--period_display', type=int, default=10,
+                        help='number of batches between two consecutive displays')
     args = parser.parse_args()
 
     epoch_lr_pairs = ast.literal_eval(args.lr_changes)
 
-    train(args.kitti_path, args.ckpt_idx, args.batch_size, args.nepochs, args.learning_rate, epoch_lr_pairs)
+    train(args.kitti_path, args.ckpt_idx, args.batch_size, args.nepochs, args.learning_rate,
+          epoch_lr_pairs, args.period_display)

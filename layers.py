@@ -3,6 +3,16 @@ import transformations
 import numpy as np
 
 
+class Disp2Depth(tf.keras.layers.Layer):
+    def __init__(self, **kwargs):
+        super(Disp2Depth, self).__init__(**kwargs)
+
+    def call(self, disp):
+        # disp: (batch_size, height, width, 1)
+        depth = disp_to_depth(disp)
+        return depth
+
+
 def compute_smoothness_loss(disparity, image):
     # disparity: (batch_size, height, width, 1)
     # image: (batch_size, height, width, 3)

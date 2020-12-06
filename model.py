@@ -1,7 +1,7 @@
 import tensorflow as tf
 from tensorflow.keras.layers import Conv2D, Lambda
 from data_reader import height, width
-from layers import WarpInputs
+from layers import WarpInputs, Disp2Depth
 
 
 # TODO: Subtract mean to images before processing?
@@ -74,8 +74,11 @@ def training_model(K):
     pose_net = build_pose_net(inputs)  # (6 * (3 - 1))
     depth_net = build_depth_net(inputs)  # [disp0, disp1, disp2, disp3]
 
-    disp0, disp1, disp2, disp3 = depth_net.outputs
+    disp0, disp1, disp2, disp3 = depth_net.outputs  # each is (batch_size, height, width, 1)
     warping_input = [inputs, pose_net.output, disp0, disp1, disp2, disp3]
     warped_images = WarpInputs(K)(warping_input)  # (batch_size, height, width, 3 * 2 * 4)
 
-    return tf.keras.Model(inputs=inputs, outputs=warped_images)
+    depth = Disp2Depth()(disp0)
+    output = tf.keras.layers.concatenate([warped_images, depth], axis=-1)  # (batch_size, height, width, 3 * 2 * 4 + 1)
+
+    return tf.keras.Model(inputs=inputs, outputs=output)
