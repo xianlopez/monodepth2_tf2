@@ -21,5 +21,5 @@ def display_training(batch_imgs, net_output):
     cv2.imshow('next image', next_orig)
     cv2.imshow('previous warped', previous_warped)
     cv2.imshow('next warped', next_warped)
-    cv2.imshow('depth', np.squeeze(depth) / 100.0)
+    cv2.imshow('depth', np.squeeze(depth) / np.max(depth))
     cv2.waitKey(1)
