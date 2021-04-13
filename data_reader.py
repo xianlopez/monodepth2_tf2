@@ -10,24 +10,25 @@ width = 640
 
 def get_images_paths(kitti_path):
     path_trios = []
-    for scenario in os.listdir(kitti_path):
-        print('Reading ' + scenario + '...')
-        for day in os.listdir(os.path.join(kitti_path, scenario)):
-            n_sequences = 0
-            n_trios = 0
-            for drive in os.listdir(os.path.join(kitti_path, scenario, day)):
-                n_sequences += 1
-                # TODO: consider using image_03 as well (right camera)
-                images_dir = os.path.join(kitti_path, scenario, day, drive, 'image_02', 'data')
-                assert os.path.isdir(images_dir)
-                frames = os.listdir(images_dir)
-                frames.sort()
-                n_trios += len(frames) - 1
-                for i in range(len(frames) - 2):
-                    path_trios.append([os.path.join(images_dir, frames[i]),
-                                       os.path.join(images_dir, frames[i + 1]),
-                                       os.path.join(images_dir, frames[i + 2])])
-            print('    Day ' + day + ': ' + str(n_trios) + ' trios in ' + str(n_sequences) + ' sequences.')
+    for day in os.listdir(kitti_path):
+        n_sequences = 0
+        n_trios = 0
+        for drive in os.listdir(os.path.join(kitti_path, day)):
+            # Discard the calibration files:
+            if drive[-4:] == ".txt":
+                continue
+            n_sequences += 1
+            # TODO: consider using image_03 as well (right camera)
+            images_dir = os.path.join(kitti_path, day, drive, 'image_02', 'data')
+            assert os.path.isdir(images_dir)
+            frames = os.listdir(images_dir)
+            frames.sort()
+            n_trios += len(frames) - 1
+            for i in range(len(frames) - 2):
+                path_trios.append([os.path.join(images_dir, frames[i]),
+                                   os.path.join(images_dir, frames[i + 1]),
+                                   os.path.join(images_dir, frames[i + 2])])
+        print('    Day ' + day + ': ' + str(n_trios) + ' trios in ' + str(n_sequences) + ' sequences.')
     print('Total number of KITTI trios: ' + str(len(path_trios)))
     return path_trios
 
