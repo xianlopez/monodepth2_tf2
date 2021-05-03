@@ -29,8 +29,8 @@ def compute_reprojection_loss(x, y):
     return reprojection_loss
 
 
-def compute_loss(y_true, y_pred):
-    # y_true: contains the input images, concatenated over the channels dimension: (batch_size, height, width, 3 * 3)
+def compute_loss(images, y_pred):
+    # images: contains the input images, concatenated over the channels dimension: (batch_size, height, width, 3 * 3)
     # The images are in temporal order. Let's call them "previous" (p), "current" (c) and "next" (n).
     # y_pred: (batch_size, height, width, 3 * 2 * 4) The warped images, in the following order:
     # (scale0_previous, scale0_next, scale1_previous, scale1_next, scale2_previous, scale2_next,
@@ -39,10 +39,10 @@ def compute_loss(y_true, y_pred):
     n_disparities = 4
     assert y_pred.shape[3] == 3 * 2 * n_disparities
 
-    _, height, width, _ = y_true.shape
-    previous_imgs = y_true[:, :, :, :3]
-    current_imgs = y_true[:, :, :, 3:6]
-    next_imgs = y_true[:, :, :, 6:]  # (batch_size, height, width, 3)
+    _, height, width, _ = images.shape
+    previous_imgs = images[:, :, :, :3]
+    current_imgs = images[:, :, :, 3:6]
+    next_imgs = images[:, :, :, 6:]  # (batch_size, height, width, 3)
 
     # Identity reprojection losses:
     identity_reprojection_loss_previous = compute_reprojection_loss(current_imgs, previous_imgs)

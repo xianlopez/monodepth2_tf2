@@ -107,4 +107,4 @@ def training_model(K):
     warping_input = [inputs, pose_net.output, disp0, disp1, disp2, disp3]
     warped_images = WarpInputs(K)(warping_input)  # (batch_size, height, width, 3 * 2 * 4)
 
-    return tf.keras.Model(inputs=inputs, outputs=warped_images)
+    return tf.keras.Model(inputs=inputs, outputs=[warped_images, depth_net.outputs])
