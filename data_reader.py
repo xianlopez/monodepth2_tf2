@@ -3,6 +3,7 @@ import random
 import cv2
 import tensorflow as tf
 import numpy as np
+from multiprocessing import Process, Pipe
 
 height = 192
 width = 640
@@ -33,20 +34,25 @@ def get_images_paths(kitti_path):
     return path_trios
 
 
-class DataReader(tf.keras.utils.Sequence):
-    def __init__(self, kitt_path, batch_size):
-        self.path_trios = get_images_paths(kitt_path)
-        # self.path_trios = self.path_trios[:100]
-        random.shuffle(self.path_trios)
+class ReaderOpts:
+    def __init__(self, kitti_path, batch_size):
+        self.kitti_path = kitti_path
         self.batch_size = batch_size
 
-    def __len__(self):
-        return len(self.path_trios) // self.batch_size
 
-    def __getitem__(self, batch_idx):
+class DataReader(tf.keras.utils.Sequence):
+    def __init__(self, opts):
+        self.path_trios = get_images_paths(opts.kitti_path)
+        # self.path_trios = self.path_trios[:100]
+        random.shuffle(self.path_trios)
+        self.batch_size = opts.batch_size
+        self.nbatches = len(self.path_trios) // self.batch_size
+        self.batch_index = 0
+
+    def fetch_batch(self):
         x = np.zeros((self.batch_size, height, width, 9), np.float32)
         for idx_in_batch in range(self.batch_size):
-            trio_idx = batch_idx * self.batch_size + idx_in_batch
+            trio_idx = self.batch_index * self.batch_size + idx_in_batch
             this_trio = self.path_trios[trio_idx]
             # Read images:
             img1 = cv2.imread(this_trio[0])
@@ -62,7 +68,43 @@ class DataReader(tf.keras.utils.Sequence):
             img3 = img3.astype(np.float32) / 255.0
             # Concatenate:
             x[idx_in_batch, ...] = np.concatenate([img1, img2, img3], axis=2)  # (height, width, 9)
-        return x, x  # (batch_size, height, width, 9)
 
-    def on_epoch_end(self):
-        random.shuffle(self.path_trios)
+        self.batch_index += 1
+        if self.batch_index == self.nbatches:
+            self.batch_index = 0
+            random.shuffle(self.path_trios)
+            # print('Rewinding data!')
+
+        return x  # (batch_size, height, width, 9)
+
+def async_reader_loop(opts, conn):
+    print('async_reader_loop is alive!')
+    reader = DataReader(opts)
+    conn.send(reader.nbatches)
+    batch_imgs = reader.fetch_batch()
+    while conn.recv() == 'GET':
+        conn.send(batch_imgs)
+        batch_imgs = reader.fetch_batch()
+    print('async_reader_loop says goodbye!')
+
+
+class AsyncParallelReader:
+    def __init__(self, opts):
+        print('Starting AsyncParallelReader')
+        self.conn1, conn2 = Pipe()
+        self.reader_process = Process(target=async_reader_loop, args=(opts, conn2))
+        self.reader_process.start()
+        self.nbatches = self.conn1.recv()
+
+    def get_batch(self):
+        self.conn1.send('GET')
+        batch_imgs = self.conn1.recv()
+        return batch_imgs
+
+    def __exit__(self, type, value, traceback):
+        print('Ending AsyncParallelReader')
+        self.conn1.send('END')
+        self.reader_process.join()
+
+    def __enter__(self):
+        return self
