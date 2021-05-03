@@ -1,12 +1,11 @@
 import os
 import random
 import cv2
-import tensorflow as tf
 import numpy as np
-from multiprocessing import Process, Pipe
+from multiprocessing import Pool, RawArray, Process, Pipe
 
-height = 192
-width = 640
+
+var_dict = {}
 
 
 def get_images_paths(kitti_path):
@@ -34,14 +33,48 @@ def get_images_paths(kitti_path):
     return path_trios
 
 
+def init_worker(batch_imgs_Arr, batch_imgs_shape):
+    var_dict['batch_imgs_Arr'] = batch_imgs_Arr
+    var_dict['batch_imgs_shape'] = batch_imgs_shape
+
+
+def read_images(inputs):
+    opts = inputs[0]
+    imgs_paths = inputs[1]
+    position_in_batch = inputs[2]
+
+    # Read images:
+    img1 = cv2.imread(imgs_paths[0])
+    img2 = cv2.imread(imgs_paths[1])
+    img3 = cv2.imread(imgs_paths[2])
+    # Resize:
+    img1 = cv2.resize(img1, (opts.img_width, opts.img_height))
+    img2 = cv2.resize(img2, (opts.img_width, opts.img_height))
+    img3 = cv2.resize(img3, (opts.img_width, opts.img_height))
+    # Make pixel values between 0 and 1:
+    img1 = img1.astype(np.float32) / 255.0
+    img2 = img2.astype(np.float32) / 255.0
+    img3 = img3.astype(np.float32) / 255.0
+    # Concatenate:
+    all_images = np.concatenate([img1, img2, img3], axis=2)  # (height, width, 9)
+    # Wrap shared data as numpy arrays:
+    batch_imgs_np = np.frombuffer(var_dict['batch_imgs_Arr'], dtype=np.float32).reshape(var_dict['batch_imgs_shape'])
+    # Assign values:
+    batch_imgs_np[position_in_batch, :, :, :] = all_images
+
+
 class ReaderOpts:
-    def __init__(self, kitti_path, batch_size):
+    def __init__(self, kitti_path, batch_size, img_height, img_width, nworkers):
         self.kitti_path = kitti_path
         self.batch_size = batch_size
+        self.img_height = img_height
+        self.img_width = img_width
+        self.nworkers = nworkers
 
 
-class DataReader(tf.keras.utils.Sequence):
+class ParallelReader:
     def __init__(self, opts):
+        self.opts = opts
         self.path_trios = get_images_paths(opts.kitti_path)
         # self.path_trios = self.path_trios[:100]
         random.shuffle(self.path_trios)
@@ -49,37 +82,35 @@ class DataReader(tf.keras.utils.Sequence):
         self.nbatches = len(self.path_trios) // self.batch_size
         self.batch_index = 0
 
+        # Initialize batch buffers:
+        self.batch_imgs_shape = (opts.batch_size, opts.img_height, opts.img_width, 9)
+        self.batch_imgs_Arr = RawArray('f', self.batch_imgs_shape[0] * self.batch_imgs_shape[1] *
+                                  self.batch_imgs_shape[2] * self.batch_imgs_shape[3])
+        # Initialize pool:
+        self.pool = Pool(processes=opts.nworkers, initializer=init_worker, initargs=
+            (self.batch_imgs_Arr, self.batch_imgs_shape))
+
     def fetch_batch(self):
-        x = np.zeros((self.batch_size, height, width, 9), np.float32)
-        for idx_in_batch in range(self.batch_size):
-            trio_idx = self.batch_index * self.batch_size + idx_in_batch
-            this_trio = self.path_trios[trio_idx]
-            # Read images:
-            img1 = cv2.imread(this_trio[0])
-            img2 = cv2.imread(this_trio[1])
-            img3 = cv2.imread(this_trio[2])
-            # Resize:
-            img1 = cv2.resize(img1, (width, height))
-            img2 = cv2.resize(img2, (width, height))
-            img3 = cv2.resize(img3, (width, height))
-            # Make pixel values between 0 and 1:
-            img1 = img1.astype(np.float32) / 255.0
-            img2 = img2.astype(np.float32) / 255.0
-            img3 = img3.astype(np.float32) / 255.0
-            # Concatenate:
-            x[idx_in_batch, ...] = np.concatenate([img1, img2, img3], axis=2)  # (height, width, 9)
+        input_data = []
+        for position_in_batch in range(self.opts.batch_size):
+            data_idx = self.batch_index * self.opts.batch_size + position_in_batch
+            input_data.append((self.opts, self.path_trios[data_idx], position_in_batch))
+
+        self.pool.map(read_images, input_data)
+
+        batch_imgs_np = np.frombuffer(self.batch_imgs_Arr, dtype=np.float32).reshape(self.batch_imgs_shape)
 
         self.batch_index += 1
         if self.batch_index == self.nbatches:
             self.batch_index = 0
             random.shuffle(self.path_trios)
-            # print('Rewinding data!')
 
-        return x  # (batch_size, height, width, 9)
+        return batch_imgs_np  # (batch_size, height, width, 9)
+
 
 def async_reader_loop(opts, conn):
     print('async_reader_loop is alive!')
-    reader = DataReader(opts)
+    reader = ParallelReader(opts)
     conn.send(reader.nbatches)
     batch_imgs = reader.fetch_batch()
     while conn.recv() == 'GET':

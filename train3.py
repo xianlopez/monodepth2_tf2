@@ -3,18 +3,24 @@ import numpy as np
 from datetime import datetime
 from sys import stdout
 
-from data_reader import DataReader, AsyncParallelReader, ReaderOpts
+from data_reader import AsyncParallelReader, ReaderOpts
 from transformations3 import make_transformation_matrix, concat_images
 from loss3 import LossLayer
 from models3 import build_depth_net, build_pose_net
 
+# TODO: Data augmentation
+# TODO: Visualization
+# TODO: Tensorboard
+# TODO: Saving
+# TODO: Validation
+# TODO: Loading pretrained weights
+
 img_height = 192
 img_width = 640
 
-kitti_path = '/home/xian/kitti_data_monodepth2'
-batch_size = 2
-reader_opts = ReaderOpts(kitti_path, batch_size)
-# train_dataset = DataReader(kitti_path, batch_size)
+kitti_path = '/home/xian/kitti_data'
+batch_size = 8
+reader_opts = ReaderOpts(kitti_path, batch_size, img_height, img_width, 8)
 
 nepochs = 20
 
@@ -29,14 +35,14 @@ pose_net = build_pose_net(img_height, img_width)
 trainable_weights = depth_net.trainable_weights
 trainable_weights.extend(pose_net.trainable_weights)
 
-optimizer = tf.keras.optimizers.Adam()  # TODO
+optimizer = tf.keras.optimizers.Adam(learning_rate=1e-4)
 
 loss_layer = LossLayer(K, img_height, img_width, batch_size)
 
 
-# @tf.function
+@tf.function
 def train_step(batch_imgs):
-    # batch_imgs: (batch_size, img_size, img_size, 9) Three images concatenated on the channels dimension
+    # batch_imgs: (batch_size, height, width, 9) Three images concatenated on the channels dimension
     img_before = batch_imgs[:, :, :, :3]
     img_target = batch_imgs[:, :, :, 3:6]
     img_after = batch_imgs[:, :, :, 6:]
@@ -44,8 +50,8 @@ def train_step(batch_imgs):
     with tf.GradientTape() as tape:
         disps = depth_net(img_target)  # disparities at different scales, in increasing resolution
         # TODO: I can spare one of this concatenations, but for now this is clearer:
-        T_before_target = pose_net(concat_images(img_before, img_target))  # (batch_size, 6)
-        T_target_after = pose_net(concat_images(img_target, img_after))  # (batch_size, 6)
+        T_before_target = pose_net(concat_images(img_before, img_target))  # (bs, 6)
+        T_target_after = pose_net(concat_images(img_target, img_after))  # (bs, 6)
         matrixT_before_target = make_transformation_matrix(T_before_target, False)  # (bs, 4, 4)
         matrixT_after_target = make_transformation_matrix(T_target_after, True)  # (bs, 4, 4)
         loss_value = loss_layer(disps, matrixT_before_target, matrixT_after_target, img_before, img_target, img_after)
