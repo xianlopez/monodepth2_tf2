@@ -10,7 +10,6 @@ from models3 import build_depth_net, build_pose_net
 from drawing3 import display_training
 
 # TODO: Data augmentation
-# TODO: Visualization
 # TODO: Tensorboard
 # TODO: Saving
 # TODO: Validation
@@ -56,12 +55,13 @@ def train_step(batch_imgs):
         T_target_after = pose_net(concat_images(img_target, img_after))  # (bs, 6)
         matrixT_before_target = make_transformation_matrix(T_before_target, False)  # (bs, 4, 4)
         matrixT_after_target = make_transformation_matrix(T_target_after, True)  # (bs, 4, 4)
-        loss_value = loss_layer(disps, matrixT_before_target, matrixT_after_target, img_before, img_target, img_after)
+        loss_value, image_from_before, image_from_after =\
+            loss_layer(disps, matrixT_before_target, matrixT_after_target, img_before, img_target, img_after)
 
     grads = tape.gradient(loss_value, trainable_weights)
     optimizer.apply_gradients(zip(grads, trainable_weights))
 
-    return loss_value, disps
+    return loss_value, disps, image_from_before, image_from_after
 
 
 with AsyncParallelReader(reader_opts) as train_reader:
@@ -70,10 +70,10 @@ with AsyncParallelReader(reader_opts) as train_reader:
         epoch_start = datetime.now()
         for batch_idx in range(train_reader.nbatches):
             batch_imgs = train_reader.get_batch()
-            loss_value, disps = train_step(batch_imgs)
+            loss_value, disps, image_from_before, image_from_after = train_step(batch_imgs)
             stdout.write("\rbatch %d/%d, loss: %.2e    " % (batch_idx + 1, train_reader.nbatches, loss_value.numpy()))
             stdout.flush()
             if (batch_idx + 1) % 10 == 0:
-                display_training(batch_imgs, disps)
+                display_training(batch_imgs, disps, image_from_before, image_from_after)
         stdout.write('\n')
         print('Epoch computed in ' + str(datetime.now() - epoch_start))

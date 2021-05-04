@@ -87,6 +87,9 @@ class LossLayer:
         num_scales = len(disps)
         loss = tf.zeros((), tf.float32)
 
+        image_from_before = None
+        image_from_after = None
+
         for scale_idx in range(num_scales):
             scale_factor = 2.0 ** scale_idx
             scaled_height = int(self.height / (2.0 ** scale_idx))
@@ -102,6 +105,10 @@ class LossLayer:
             points3d_hom_target = self.backproject(depth)  # (bs, h, w, 4)
             target_image_from_before = self.warp(img_before, points3d_hom_target, T_before_target)
             target_image_from_after = self.warp(img_after, points3d_hom_target, T_after_target)
+
+            if scale_idx == 0:
+                image_from_before = target_image_from_before
+                image_from_after = target_image_from_after
 
             # All the losses below have shape (bs, h, w)
             reprojection_loss_before = compute_reprojection_loss(img_target, target_image_from_before)
@@ -127,4 +134,4 @@ class LossLayer:
 
         loss /= float(num_scales)
 
-        return loss
+        return loss, image_from_before, image_from_after
