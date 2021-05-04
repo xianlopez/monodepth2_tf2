@@ -1,5 +1,6 @@
 import cv2
 import numpy as np
+from data_reader import image_means
 
 # We display the first element of the batch.
 def display_training(batch_imgs, disps, image_from_before, image_from_after):
@@ -9,11 +10,9 @@ def display_training(batch_imgs, disps, image_from_before, image_from_after):
     # image_from_before: (batch_size, height, width, 3)
     # image_from_after: (batch_size, height, width, 3)
 
-    # TODO: Add images mean again, when I finally include its subtraction.
-
-    previous_img = batch_imgs[0, :, :, :3]
-    target_img = batch_imgs[0, :, :, 3:6]
-    next_img = batch_imgs[0, :, :, 6:]
+    previous_img = batch_imgs[0, :, :, :3] + image_means
+    target_img = batch_imgs[0, :, :, 3:6] + image_means
+    next_img = batch_imgs[0, :, :, 6:] + image_means
     cv2.imshow("previous", previous_img)
     cv2.imshow("target", target_img)
     cv2.imshow("next", next_img)
@@ -23,10 +22,10 @@ def display_training(batch_imgs, disps, image_from_before, image_from_after):
         disparity /= np.max(disparity)
         cv2.imshow('disp' + str(s), disparity)
 
-    img_from_before = image_from_before[0, :, :, :].numpy()
+    img_from_before = image_from_before[0, :, :, :].numpy() + image_means
     cv2.imshow('img_from_before', img_from_before)
 
-    img_from_after = image_from_after[0, :, :, :].numpy()
+    img_from_after = image_from_after[0, :, :, :].numpy() + image_means
     cv2.imshow('img_from_after', img_from_after)
 
     cv2.waitKey(1)

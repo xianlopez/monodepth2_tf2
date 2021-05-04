@@ -7,6 +7,10 @@ from multiprocessing import Pool, RawArray, Process, Pipe
 
 var_dict = {}
 
+image_means = np.array([123.0, 117.0, 104.0])
+image_means /= 255.0
+image_means = np.reshape(image_means, [1, 1, 3])
+
 
 def get_images_paths(kitti_path):
     path_trios = []
@@ -55,6 +59,10 @@ def read_images(inputs):
     img1 = img1.astype(np.float32) / 255.0
     img2 = img2.astype(np.float32) / 255.0
     img3 = img3.astype(np.float32) / 255.0
+    # Subtract mean:
+    img1 = img1 - image_means
+    img2 = img2 - image_means
+    img3 = img3 - image_means
     # Concatenate:
     all_images = np.concatenate([img1, img2, img3], axis=2)  # (height, width, 9)
     # Wrap shared data as numpy arrays:

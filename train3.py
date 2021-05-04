@@ -13,7 +13,6 @@ from drawing3 import display_training
 # TODO: Tensorboard
 # TODO: Saving
 # TODO: Validation
-# TODO: Subtract mean
 
 img_height = 192
 img_width = 640
