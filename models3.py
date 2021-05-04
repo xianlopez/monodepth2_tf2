@@ -46,8 +46,12 @@ def upsampling_block(x, num_outputs, previous_features):
     return x
 
 
-def build_depth_net(height, width):
+def build_depth_net(height, width, pretrained_weights_path):
     encoder = reset18_multi_image_encoder(height, width, 1, 'ResNet18')
+
+    read_result = encoder.load_weights(pretrained_weights_path)
+    read_result.assert_existing_objects_matched()
+
     x = encoder.outputs[-1]  # (batch_size, h/32, w/32, 512)
 
     x = upsampling_block(x, 256, encoder.output[-2])  # (batch_size, h/16, w/16, 512)

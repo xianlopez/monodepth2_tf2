@@ -13,7 +13,6 @@ from drawing3 import display_training
 # TODO: Tensorboard
 # TODO: Saving
 # TODO: Validation
-# TODO: Loading pretrained weights
 # TODO: Subtract mean
 
 img_height = 192
@@ -29,8 +28,9 @@ K = np.array([[0.58 * img_width, 0, 0.5 * img_width],
               [0, 1.92 * img_height, 0.5 * img_height],
               [0, 0, 1]], dtype=np.float32)
 
+pretrained_weights_path = '/home/xian/ckpts/resnet18_fully_trained/ckpt'
 
-depth_net = build_depth_net(img_height, img_width)
+depth_net = build_depth_net(img_height, img_width, pretrained_weights_path)
 pose_net = build_pose_net(img_height, img_width)
 
 trainable_weights = depth_net.trainable_weights
