@@ -2,6 +2,8 @@ import tensorflow as tf
 import numpy as np
 from datetime import datetime
 from sys import stdout
+import shutil
+import os
 
 from data_reader import AsyncParallelReader, ReaderOpts
 from transformations3 import make_transformation_matrix, concat_images
@@ -10,7 +12,6 @@ from models3 import build_depth_net, build_pose_net
 from drawing3 import display_training
 
 # TODO: Data augmentation
-# TODO: Tensorboard
 # TODO: Saving
 # TODO: Validation
 
@@ -39,9 +40,15 @@ optimizer = tf.keras.optimizers.Adam(learning_rate=1e-4)
 
 loss_layer = LossLayer(K, img_height, img_width, batch_size)
 
+train_log_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'logs')
+if os.path.exists(train_log_dir):
+    shutil.rmtree(train_log_dir)
+train_summary_writer = tf.summary.create_file_writer(train_log_dir)
+train_summary_writer.set_as_default()
+
 
 @tf.function
-def train_step(batch_imgs):
+def train_step(batch_imgs, step_count):
     # batch_imgs: (batch_size, height, width, 9) Three images concatenated on the channels dimension
     img_before = batch_imgs[:, :, :, :3]
     img_target = batch_imgs[:, :, :, 3:6]
@@ -60,19 +67,25 @@ def train_step(batch_imgs):
     grads = tape.gradient(loss_value, trainable_weights)
     optimizer.apply_gradients(zip(grads, trainable_weights))
 
+    with train_summary_writer.as_default():
+        tf.summary.scalar('loss', loss_value, step=step_count)
+
     return loss_value, disps, image_from_before, image_from_after
 
 
 with AsyncParallelReader(reader_opts) as train_reader:
+    step_count = 0
     for epoch in range(nepochs):
         print("\nStart epoch ", epoch + 1)
         epoch_start = datetime.now()
         for batch_idx in range(train_reader.nbatches):
             batch_imgs = train_reader.get_batch()
-            loss_value, disps, image_from_before, image_from_after = train_step(batch_imgs)
+            loss_value, disps, image_from_before, image_from_after = train_step(batch_imgs, tf.constant(step_count, tf.int64))
+            train_summary_writer.flush()
             stdout.write("\rbatch %d/%d, loss: %.2e    " % (batch_idx + 1, train_reader.nbatches, loss_value.numpy()))
             stdout.flush()
             if (batch_idx + 1) % 10 == 0:
                 display_training(batch_imgs, disps, image_from_before, image_from_after)
+            step_count += 1
         stdout.write('\n')
         print('Epoch computed in ' + str(datetime.now() - epoch_start))
