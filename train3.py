@@ -7,6 +7,7 @@ from data_reader import AsyncParallelReader, ReaderOpts
 from transformations3 import make_transformation_matrix, concat_images
 from loss3 import LossLayer
 from models3 import build_depth_net, build_pose_net
+from drawing3 import display_training
 
 # TODO: Data augmentation
 # TODO: Visualization
@@ -14,6 +15,7 @@ from models3 import build_depth_net, build_pose_net
 # TODO: Saving
 # TODO: Validation
 # TODO: Loading pretrained weights
+# TODO: Subtract mean
 
 img_height = 192
 img_width = 640
@@ -59,7 +61,7 @@ def train_step(batch_imgs):
     grads = tape.gradient(loss_value, trainable_weights)
     optimizer.apply_gradients(zip(grads, trainable_weights))
 
-    return loss_value
+    return loss_value, disps
 
 
 with AsyncParallelReader(reader_opts) as train_reader:
@@ -68,8 +70,10 @@ with AsyncParallelReader(reader_opts) as train_reader:
         epoch_start = datetime.now()
         for batch_idx in range(train_reader.nbatches):
             batch_imgs = train_reader.get_batch()
-            loss_value = train_step(batch_imgs)
+            loss_value, disps = train_step(batch_imgs)
             stdout.write("\rbatch %d/%d, loss: %.2e    " % (batch_idx + 1, train_reader.nbatches, loss_value.numpy()))
             stdout.flush()
+            if (batch_idx + 1) % 10 == 0:
+                display_training(batch_imgs, disps)
         stdout.write('\n')
         print('Epoch computed in ' + str(datetime.now() - epoch_start))
