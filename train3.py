@@ -14,6 +14,8 @@ from drawing3 import display_training
 # TODO: Data augmentation
 # TODO: Saving
 # TODO: Validation
+# TODO: Learning rate schedule
+# TODO: Metrics
 
 img_height = 192
 img_width = 640
@@ -48,8 +50,9 @@ train_summary_writer.set_as_default()
 
 
 @tf.function
-def train_step(batch_imgs, step_count):
+def train_step(batch_imgs, batch_depth, step_count):
     # batch_imgs: (batch_size, height, width, 9) Three images concatenated on the channels dimension
+    # batch_depth: (batch_size, height, width) Ground truth depth for target image (used only to compute metrics)
     img_before = batch_imgs[:, :, :, :3]
     img_target = batch_imgs[:, :, :, 3:6]
     img_after = batch_imgs[:, :, :, 6:]
@@ -79,8 +82,9 @@ with AsyncParallelReader(reader_opts) as train_reader:
         print("\nStart epoch ", epoch + 1)
         epoch_start = datetime.now()
         for batch_idx in range(train_reader.nbatches):
-            batch_imgs = train_reader.get_batch()
-            loss_value, disps, image_from_before, image_from_after = train_step(batch_imgs, tf.constant(step_count, tf.int64))
+            batch_imgs, batch_depth = train_reader.get_batch()
+            loss_value, disps, image_from_before, image_from_after =\
+                train_step(batch_imgs, batch_depth, tf.constant(step_count, tf.int64))
             train_summary_writer.flush()
             stdout.write("\rbatch %d/%d, loss: %.2e    " % (batch_idx + 1, train_reader.nbatches, loss_value.numpy()))
             stdout.flush()
