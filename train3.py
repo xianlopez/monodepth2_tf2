@@ -10,6 +10,7 @@ from transformations3 import make_transformation_matrix, concat_images
 from loss3 import LossLayer
 from models3 import build_depth_net, build_pose_net
 from drawing3 import display_training
+from metrics3 import compute_metrics
 
 # TODO: Data augmentation
 # TODO: Saving
@@ -49,10 +50,23 @@ train_summary_writer = tf.summary.create_file_writer(train_log_dir)
 train_summary_writer.set_as_default()
 
 
+def compute_and_log_metrics(depth_pred, depth_gt, step_count):
+    # depth_pred: (batch_size, height, width, 1)
+    # depth_gt: (batch_size, height, width)
+    abs_rel, sq_rel, rmse, rmse_log, a1, a2, a3 = compute_metrics(depth_pred, depth_gt)
+    with train_summary_writer.as_default():
+        tf.summary.scalar('abs_rel', abs_rel, step=step_count)
+        tf.summary.scalar('sq_rel', sq_rel, step=step_count)
+        tf.summary.scalar('rmse', rmse, step=step_count)
+        tf.summary.scalar('rmse_log', rmse_log, step=step_count)
+        tf.summary.scalar('a1', a1, step=step_count)
+        tf.summary.scalar('a2', a2, step=step_count)
+        tf.summary.scalar('a3', a3, step=step_count)
+
+
 @tf.function
-def train_step(batch_imgs, batch_depth, step_count):
+def train_step(batch_imgs, step_count):
     # batch_imgs: (batch_size, height, width, 9) Three images concatenated on the channels dimension
-    # batch_depth: (batch_size, height, width) Ground truth depth for target image (used only to compute metrics)
     img_before = batch_imgs[:, :, :, :3]
     img_target = batch_imgs[:, :, :, 3:6]
     img_after = batch_imgs[:, :, :, 6:]
@@ -82,9 +96,10 @@ with AsyncParallelReader(reader_opts) as train_reader:
         print("\nStart epoch ", epoch + 1)
         epoch_start = datetime.now()
         for batch_idx in range(train_reader.nbatches):
-            batch_imgs, batch_depth = train_reader.get_batch()
-            loss_value, disps, image_from_before, image_from_after =\
-                train_step(batch_imgs, batch_depth, tf.constant(step_count, tf.int64))
+            batch_imgs, batch_depth_gt = train_reader.get_batch()
+            step_count_tf = tf.constant(step_count, tf.int64)
+            loss_value, disps, image_from_before, image_from_after = train_step(batch_imgs, step_count_tf)
+            compute_and_log_metrics(disps[-1], batch_depth_gt, step_count_tf)
             train_summary_writer.flush()
             stdout.write("\rbatch %d/%d, loss: %.2e    " % (batch_idx + 1, train_reader.nbatches, loss_value.numpy()))
             stdout.flush()
