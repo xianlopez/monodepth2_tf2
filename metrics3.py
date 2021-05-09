@@ -14,8 +14,8 @@ def compute_metrics(disp_pred, depth_gt):
     depth_pred = disp2depth(disp_pred)  # (batch_size, height, width, 1)
 
     # Flatten:
-    depth_pred = tf.reshape(depth_pred, (-1))
-    depth_gt = tf.reshape(depth_gt, (-1))
+    depth_pred = tf.reshape(depth_pred, [-1])
+    depth_gt = tf.reshape(depth_gt, [-1])
 
     # Zero elements in ground truth correspond to places where we don't have depth information.
     gt_mask = depth_gt > 0.1
