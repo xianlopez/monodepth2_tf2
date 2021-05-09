@@ -50,10 +50,10 @@ train_summary_writer.set_as_default()
 save_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'ckpts')
 
 @tf.function
-def compute_and_log_metrics(depth_pred, depth_gt, step_count):
-    # depth_pred: (batch_size, height, width, 1)
+def compute_and_log_metrics(disp_pred, depth_gt, step_count):
+    # disp_pred: (batch_size, height, width, 1)
     # depth_gt: (batch_size, height, width)
-    abs_rel, sq_rel, rmse, rmse_log, a1, a2, a3 = compute_metrics(depth_pred, depth_gt)
+    abs_rel, sq_rel, rmse, rmse_log, a1, a2, a3 = compute_metrics(disp_pred, depth_gt)
     with train_summary_writer.as_default():
         tf.summary.scalar('abs_rel', abs_rel, step=step_count)
         tf.summary.scalar('sq_rel', sq_rel, step=step_count)
