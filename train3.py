@@ -50,6 +50,7 @@ train_summary_writer = tf.summary.create_file_writer(train_log_dir)
 train_summary_writer.set_as_default()
 
 
+@tf.function
 def compute_and_log_metrics(depth_pred, depth_gt, step_count):
     # depth_pred: (batch_size, height, width, 1)
     # depth_gt: (batch_size, height, width)
