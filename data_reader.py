@@ -51,7 +51,12 @@ def init_worker(batch_imgs_Arr, batch_imgs_shape, batch_depth_Arr, batch_depth_s
 
 
 def get_depth(velo_path, calib_dir, height, width):
-    assert os.path.isfile(velo_path)
+
+    # In some cases the velodyne file is missing. We'll just return a matrix of zeros
+    # which will be interpreted as no depth information for every pixel.
+    if not os.path.isfile(velo_path):
+        return np.zeros((height, width), dtype=np.float32)
+
     assert os.path.isdir(calib_dir)
     assert os.path.isfile(os.path.join(calib_dir, 'calib_cam_to_cam.txt'))
     assert os.path.isfile(os.path.join(calib_dir, 'calib_velo_to_cam.txt'))
