@@ -1,16 +1,6 @@
 import tensorflow as tf
 from transformations3 import BackprojectLayer, WarpLayer
-
-
-def disp2depth(disp):
-    # disp: (batch_size, h, w, 1)
-    max_depth = 100.0
-    min_depth = 0.1
-    min_disp = 1.0 / max_depth
-    max_disp = 1.0 / min_depth
-    scaled_disp = min_disp + (max_disp - min_disp) * disp
-    depth = 1.0 / scaled_disp
-    return depth
+from models3 import disp2depth
 
 
 def SSIM(x, y):

@@ -70,3 +70,14 @@ def build_depth_net(height, width, pretrained_weights_path):
     disparities.append(layers.Conv2D(1, 3, padding='same', activation='sigmoid')(x))  # (bs, h, w, 1)
 
     return Model(inputs=encoder.input, outputs=disparities, name="depth_net")
+
+
+def disp2depth(disp):
+    # disp: (batch_size, h, w, 1)
+    max_depth = 100.0
+    min_depth = 0.1
+    min_disp = 1.0 / max_depth
+    max_disp = 1.0 / min_depth
+    scaled_disp = min_disp + (max_disp - min_disp) * disp
+    depth = 1.0 / scaled_disp
+    return depth

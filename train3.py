@@ -16,7 +16,6 @@ from metrics3 import compute_metrics
 # TODO: Saving
 # TODO: Validation
 # TODO: Learning rate schedule
-# TODO: Metrics
 
 img_height = 192
 img_width = 640

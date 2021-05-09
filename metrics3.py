@@ -1,14 +1,17 @@
 import tensorflow as tf
 import tensorflow_probability as tfp
+from models3 import disp2depth
 
 
-def compute_metrics(depth_pred, depth_gt):
-    # depth_pred: (batch_size, height, width, 1)
+def compute_metrics(disp_pred, depth_gt):
+    # disp_pred: (batch_size, height, width, 1)
     # depth_gt: (batch_size, height, width)
 
     # Note: I'm computing the metrics over the entire batch here. Maybe it would be more
     # correct to compute it over each image, and then average. But I suspect the results
     # will be very similar, and this way is easier.
+
+    depth_pred = disp2depth(disp_pred)  # (batch_size, height, width, 1)
 
     # Flatten:
     depth_pred = tf.reshape(depth_pred, (-1))
