@@ -13,7 +13,6 @@ from drawing3 import display_training
 from metrics3 import compute_metrics
 
 # TODO: Data augmentation
-# TODO: Saving
 # TODO: Validation
 # TODO: Learning rate schedule
 
@@ -48,6 +47,7 @@ if os.path.exists(train_log_dir):
 train_summary_writer = tf.summary.create_file_writer(train_log_dir)
 train_summary_writer.set_as_default()
 
+save_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'ckpts')
 
 @tf.function
 def compute_and_log_metrics(depth_pred, depth_gt, step_count):
@@ -108,3 +108,8 @@ with AsyncParallelReader(reader_opts) as train_reader:
             step_count += 1
         stdout.write('\n')
         print('Epoch computed in ' + str(datetime.now() - epoch_start))
+
+        # Save models:
+        print('Saving models')
+        pose_net.save_weights(os.path.join(save_dir, 'pose_net_' + str(epoch), 'weights'))
+        depth_net.save_weights(os.path.join(save_dir, 'depth_net_' + str(epoch), 'weights'))
