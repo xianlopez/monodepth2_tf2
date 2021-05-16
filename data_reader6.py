@@ -105,7 +105,7 @@ class AsyncReader:
     def __init__(self, opts):
         self.opts = opts
         self.data_info = get_images_paths(opts.kitti_path, opts.depths_path)
-        self.data_info = self.data_info[:200]
+        # self.data_info = self.data_info[:200]
         self.nbatches = len(self.data_info) // opts.batch_size
 
         self.output_queue = Queue()
