@@ -60,6 +60,7 @@ def transform3d(T21, points3d_hom_1):
     # T21: (batch_size, 4, 4)
     # points3d_hom_1: (batch_size, h, w, 4)
     T21_ext = tf.expand_dims(tf.expand_dims(T21, axis=1), axis=1)  # (batch_size, 1, 1, 4, 4)
+    T21_ext = tf.tile(T21_ext, [1, points3d_hom_1.shape[1], points3d_hom_1.shape[2], 1, 1])
     points3d_hom_2 = tf.linalg.matvec(T21_ext, points3d_hom_1)
     return points3d_hom_2  # (batch_size, h, w, 4)
 
