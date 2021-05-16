@@ -9,7 +9,7 @@ from data_reader6 import AsyncReader, ReaderOpts
 from transformations3 import make_transformation_matrix, concat_images
 from loss3 import LossLayer
 from models3 import build_depth_net, build_pose_net
-from drawing3 import display_training
+from drawing3 import display_training_basic
 from metrics3 import compute_metrics
 
 # TODO: Data augmentation
@@ -108,7 +108,7 @@ with AsyncReader(reader_opts) as train_reader:
             stdout.write("\rbatch %d/%d, loss: %.2e    " % (batch_idx + 1, train_reader.nbatches, loss_value.numpy()))
             stdout.flush()
             if (batch_idx + 1) % 10 == 0:
-                display_training(batch_imgs, disps, image_from_before, image_from_after)
+                display_training_basic(batch_imgs, disps, batch_depth_gt)
             step_count += 1
         stdout.write('\n')
         print('Epoch computed in ' + str(datetime.now() - epoch_start))
