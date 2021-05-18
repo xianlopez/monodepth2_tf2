@@ -116,12 +116,6 @@ class AsyncReader:
             self.add_fetch_task()
 
     def __enter__(self):
-        self.output_queue = Queue()
-        self.pool = Pool(processes=self.opts.nworkers, initializer=init_worker, initargs=(self.output_queue,))
-        self.next_batch_idx = 0
-        random.shuffle(self.data_info)
-        for i in range(min(self.opts.nworkers, self.nbatches)):
-            self.add_fetch_task()
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
