@@ -49,7 +49,7 @@ def upsampling_block(x, num_outputs, previous_features):
 def build_depth_net(height, width, pretrained_weights_path):
     encoder = reset18_multi_image_encoder(height, width, 1, 'ResNet18')
 
-    if pretrained_weights_path:
+    if pretrained_weights_path is not None:
         read_result = encoder.load_weights(pretrained_weights_path)
         read_result.assert_existing_objects_matched()
 
