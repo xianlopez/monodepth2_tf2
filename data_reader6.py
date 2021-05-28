@@ -5,6 +5,10 @@ import cv2
 import random
 
 
+depth_height = 375
+depth_width = 1242
+
+
 image_means = np.array([123.0, 117.0, 104.0])
 image_means /= 255.0
 image_means = np.reshape(image_means, [1, 1, 3])
@@ -41,7 +45,7 @@ def get_images_paths(kitti_path, depths_path):
 
 def read_batch(batch_info, opts):
     batch_imgs_np = np.zeros((opts.batch_size, opts.img_height, opts.img_width, 9), np.float32)
-    batch_depth_np = np.zeros((opts.batch_size, opts.img_height, opts.img_width), np.float32)
+    batch_depth_np = np.zeros((opts.batch_size, depth_height, depth_width), np.float32)
     for i in range(len(batch_info)):
         item_paths = batch_info[i]
         all_images, depth = read_item(item_paths, opts)
@@ -82,7 +86,7 @@ def read_depth(depth_path, opts):
     if os.path.isfile(depth_path):
         depth = np.load(depth_path)
     else:
-        depth = np.zeros((opts.img_height, opts.img_width), dtype=np.float32)
+        depth = np.zeros((depth_height, depth_width), dtype=np.float32)
     return depth
 
 
