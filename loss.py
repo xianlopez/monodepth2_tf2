@@ -1,6 +1,6 @@
 import tensorflow as tf
-from transformations3 import BackprojectLayer, WarpLayer
-from models3 import disp2depth
+from transformations import BackprojectLayer, WarpLayer
+from models import disp2depth
 
 
 def SSIM(x, y):

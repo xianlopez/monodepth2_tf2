@@ -3,7 +3,7 @@ from scipy.spatial.transform import Rotation as R
 import numpy as np
 import cv2
 
-import transformations3
+import transformations
 
 
 def test_rotation_from_axisangle():

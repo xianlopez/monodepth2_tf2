@@ -1,6 +1,6 @@
 import tensorflow as tf
 import tensorflow_probability as tfp
-from models3 import disp2depth
+from models import disp2depth
 import numpy as np
 
 

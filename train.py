@@ -5,12 +5,12 @@ from sys import stdout
 import shutil
 import os
 
-from data_reader6 import AsyncReader, ReaderOpts
-from transformations3 import make_transformation_matrix, concat_images
-from loss3 import LossLayer
-from models3 import build_depth_net, build_pose_net
-from drawing3 import display_training_basic
-from metrics3 import compute_metrics
+from data_reader import AsyncReader, ReaderOpts
+from transformations import make_transformation_matrix, concat_images
+from loss import LossLayer
+from models import build_depth_net, build_pose_net
+from drawing import display_training_basic
+from metrics import compute_metrics
 
 # TODO: Data augmentation
 # TODO: Validation
