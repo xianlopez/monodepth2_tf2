@@ -3,6 +3,9 @@ import numpy as np
 import os
 import cv2
 import random
+import skimage.transform
+
+from kitti_utils import generate_depth_map
 
 
 depth_height = 375
@@ -14,7 +17,7 @@ image_means /= 255.0
 image_means = np.reshape(image_means, [1, 1, 3])
 
 
-def get_images_paths(kitti_path, depths_path):
+def get_images_paths(kitti_path):
     items_paths = []
     for day in os.listdir(kitti_path):
         n_sequences = 0
@@ -26,18 +29,19 @@ def get_images_paths(kitti_path, depths_path):
             n_sequences += 1
             # TODO: consider using image_03 as well (right camera)
             images_dir = os.path.join(kitti_path, day, drive, 'image_02', 'data')
-            drive_depths_path = os.path.join(depths_path, day, drive, 'depth')
-            assert os.path.isdir(drive_depths_path)
+            velodyne_dir = os.path.join(kitti_path, day, drive, 'velodyne_points', 'data')
             assert os.path.isdir(images_dir)
+            assert os.path.isdir(velodyne_dir)
             frames = os.listdir(images_dir)
             frames.sort()
             n_trios += len(frames) - 1
             for i in range(len(frames) - 2):
-                target_depth_name = os.path.splitext(frames[i + 1])[0] + '.npy'
+                target_velo_name = os.path.splitext(frames[i + 1])[0] + '.bin'
                 items_paths.append([os.path.join(images_dir, frames[i]),  # previous image
                                     os.path.join(images_dir, frames[i + 1]),  # target image
                                     os.path.join(images_dir, frames[i + 2]),  # next image
-                                    os.path.join(drive_depths_path, target_depth_name)])  # target velodyne
+                                    os.path.join(velodyne_dir, target_velo_name),  # target velodyne
+                                    os.path.join(kitti_path, day)])  # calib dir
         print('    Day ' + day + ': ' + str(n_trios) + ' trios in ' + str(n_sequences) + ' sequences.')
     print('Total number of KITTI trios: ' + str(len(items_paths)))
     return items_paths
@@ -75,19 +79,24 @@ def read_item(item_paths, opts):
     all_images = np.concatenate([img1, img2, img3], axis=2)  # (height, width, 9)
 
     # Depth:
-    depth = read_depth(item_paths[3], opts)
+    depth = get_depth(item_paths[3], item_paths[4])
 
     return all_images, depth
 
 
-def read_depth(depth_path, opts):
-    # In some cases the velodyne file is missing, so we don't have depth. Let's return a matirx
-    # of zeros in that case, which will be interpreted as no depth information.
-    if os.path.isfile(depth_path):
-        depth = np.load(depth_path)
-    else:
-        depth = np.zeros((depth_height, depth_width), dtype=np.float32)
-    return depth
+def get_depth(velo_path, calib_dir):
+    # In some cases the velodyne file is missing. We'll just return a matrix of zeros
+    # which will be interpreted as no depth information for every pixel.
+    if not os.path.isfile(velo_path):
+        return np.zeros((depth_height, depth_width), dtype=np.float32)
+    assert os.path.isdir(calib_dir)
+    assert os.path.isfile(os.path.join(calib_dir, 'calib_cam_to_cam.txt'))
+    assert os.path.isfile(os.path.join(calib_dir, 'calib_velo_to_cam.txt'))
+    depth = generate_depth_map(calib_dir, velo_path)
+    depth_resized = skimage.transform.resize(
+        depth, (depth_height, depth_width), order=0, preserve_range=True, mode='constant')
+    depth_resized = depth_resized.astype(np.float32)
+    return depth_resized
 
 
 def init_worker(queue):
@@ -96,9 +105,8 @@ def init_worker(queue):
 
 
 class ReaderOpts:
-    def __init__(self, kitti_path, depths_path, batch_size, img_height, img_width, nworkers):
+    def __init__(self, kitti_path, batch_size, img_height, img_width, nworkers):
         self.kitti_path = kitti_path
-        self.depths_path = depths_path
         self.batch_size = batch_size
         self.img_height = img_height
         self.img_width = img_width
@@ -108,7 +116,7 @@ class ReaderOpts:
 class AsyncReader:
     def __init__(self, opts):
         self.opts = opts
-        self.data_info = get_images_paths(opts.kitti_path, opts.depths_path)
+        self.data_info = get_images_paths(opts.kitti_path)
         # self.data_info = self.data_info[:200]
         self.nbatches = len(self.data_info) // opts.batch_size
 

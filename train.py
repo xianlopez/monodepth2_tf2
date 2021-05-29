@@ -20,10 +20,9 @@ img_height = 192
 img_width = 640
 
 kitti_path = '/home/xian/kitti_data'
-depths_path = '/home/xian/monodepth2_tf2/preprocessed_depths'
 batch_size = 8
 nworkers = 6
-reader_opts = ReaderOpts(kitti_path, depths_path, batch_size, img_height, img_width, nworkers)
+reader_opts = ReaderOpts(kitti_path, batch_size, img_height, img_width, nworkers)
 
 nepochs = 20
 
