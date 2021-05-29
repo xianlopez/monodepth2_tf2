@@ -23,11 +23,14 @@ K = np.array([[0.58 * img_width, 0, 0.5 * img_width],
               [0, 1.92 * img_height, 0.5 * img_height],
               [0, 0, 1]], dtype=np.float32)
 
-depth_weights_path = '/home/xian/monodepth2_tf2/ckpts/depth_net_1/weights'
-pose_weights_path = '/home/xian/monodepth2_tf2/ckpts/pose_net_1/weights'
+depth_weights_path = '/home/xian/monodepth2_tf2/ckpts/depth_net_19/weights'
+pose_weights_path = '/home/xian/monodepth2_tf2/ckpts/pose_net_19/weights'
 
 depth_net = build_depth_net(img_height, img_width, None)
-pose_net = build_pose_net(img_height, img_width,)
+pose_net = build_pose_net(img_height, img_width)
+
+depth_net.load_weights(depth_weights_path)
+pose_net.load_weights(pose_weights_path)
 
 loss_layer = LossLayer(K, img_height, img_width, batch_size)
 
