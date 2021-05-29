@@ -1,6 +1,6 @@
 import cv2
 import numpy as np
-from data_reader import image_means
+from data_reader6 import image_means
 from models3 import disp2depth
 
 # We display the first element of the batch.

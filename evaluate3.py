@@ -5,7 +5,7 @@ from sys import stdout
 import shutil
 import os
 
-from data_reader import AsyncParallelReader, ReaderOpts
+from data_reader6 import AsyncReader, ReaderOpts
 from transformations3 import make_transformation_matrix, concat_images
 from loss3 import LossLayer
 from models3 import build_depth_net, build_pose_net
@@ -16,8 +16,10 @@ img_height = 192
 img_width = 640
 
 kitti_path = '/home/xian/kitti_data'
+depths_path = '/home/xian/monodepth2_tf2/preprocessed_depths'
 batch_size = 8
-reader_opts = ReaderOpts(kitti_path, batch_size, img_height, img_width, 8)
+nworkers = 6
+reader_opts = ReaderOpts(kitti_path, depths_path, batch_size, img_height, img_width, nworkers)
 
 K = np.array([[0.58 * img_width, 0, 0.5 * img_width],
               [0, 1.92 * img_height, 0.5 * img_height],
@@ -59,7 +61,7 @@ def eval_step(batch_imgs, depth_gt):
     return loss_value, metrics, disps, image_from_before, image_from_after
 
 
-with AsyncParallelReader(reader_opts) as eval_reader:
+with AsyncReader(reader_opts) as eval_reader:
     eval_start = datetime.now()
     accum_loss = 0.0
     accum_metrics = np.zeros((7), np.float32)
