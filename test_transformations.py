@@ -14,7 +14,7 @@ def test_rotation_from_axisangle():
     axisangle1_numpy = [0.3, -0.22, 1.0]
     axisangle1 = tf.constant(axisangle1_numpy)
     axisangles = tf.stack([axisangle0, axisangle1], axis=0)
-    rot_matrices = transformations3.rotation_from_axisangle(axisangles)
+    rot_matrices = transformations.rotation_from_axisangle(axisangles)
     assert rot_matrices.shape == (2, 3, 3)
     assert tf.norm(rot_matrices[0, :, :] - tf.eye(3)) < 1e-6
     expected_matrix_1 = tf.constant(R.from_rotvec(axisangle1_numpy).as_matrix(), tf.float32)
@@ -36,7 +36,7 @@ def test_make_transformation_matrix():
 
     axisangle = tf.constant(axisangle_numpy, tf.float32)
     translation = tf.constant(translation_numpy, tf.float32)
-    T = transformations3.make_transformation_matrix(tf.concat([axisangle, translation], axis=1), False)
+    T = transformations.make_transformation_matrix(tf.concat([axisangle, translation], axis=1), False)
 
     assert T.shape == (2, 4, 4)
     assert tf.norm(T[0, :, :] - expectedT_0) < 1e-6
@@ -61,7 +61,7 @@ def test_make_transformation_matrix_inv():
 
     axisangle = tf.constant(axisangle_numpy, tf.float32)
     translation = tf.constant(translation_numpy, tf.float32)
-    T = transformations3.make_transformation_matrix(tf.concat([axisangle, translation], axis=1), True)
+    T = transformations.make_transformation_matrix(tf.concat([axisangle, translation], axis=1), True)
 
     assert T.shape == (2, 4, 4)
     assert tf.norm(T[0, :, :] - expectedT_0) < 1e-6
@@ -101,7 +101,7 @@ def test_backproject():
 
     depth_tf = tf.constant(np.stack([depth_0, depth_1], axis=0), tf.float32)  # (2, height, width, 1)
 
-    backproject_layer = transformations3.BackprojectLayer(K, height, width, 2)
+    backproject_layer = transformations.BackprojectLayer(K, height, width, 2)
     points3d_hom_tf = backproject_layer(depth_tf)
 
     assert points3d_hom_tf.shape == (2, height, width, 4)
@@ -166,10 +166,10 @@ def test_project():
                 pixel_coords[b, i, j] = pixel_coords_hom[:2] / pixel_coords_hom[2]
 
     points3d_hom_tf = tf.constant(points3d_hom, tf.float32)
-    project_layer = transformations3.ProjectLayer(K)
+    project_layer = transformations.ProjectLayer(K)
     Tcw_tf = tf.constant(Tcw, tf.float32)
 
-    points3d_hom_cam = transformations3.transform3d(Tcw_tf, points3d_hom_tf)
+    points3d_hom_cam = transformations.transform3d(Tcw_tf, points3d_hom_tf)
     pixel_coords_tf = project_layer(points3d_hom_cam)
 
     assert pixel_coords_tf.shape == (batch_size, height, width, 2)
@@ -204,7 +204,7 @@ def test_evaluate_tensor_on_xy_grid():
     input_tensor = tf.constant(input_values, tf.float32)
     x_tf = tf.constant(x, tf.int32)
     y_tf = tf.constant(y, tf.int32)
-    output_tensor = transformations3.evaluate_tensor_on_xy_grid(input_tensor, x_tf, y_tf)
+    output_tensor = transformations.evaluate_tensor_on_xy_grid(input_tensor, x_tf, y_tf)
 
     assert output_tensor.shape == (batch_size, height, width, nchannels)
     for b in range(batch_size):
@@ -275,7 +275,7 @@ def test_bilinear_interpolation():
 
     input_tensor_tf = tf.constant(input_tensor, tf.float32)
     sampling_points_tf = tf.constant(sampling_points, tf.float32)
-    output_tensor_tf = transformations3.bilinear_interpolation(input_tensor_tf, sampling_points_tf)
+    output_tensor_tf = transformations.bilinear_interpolation(input_tensor_tf, sampling_points_tf)
 
     assert output_tensor_tf.shape == (batch_size, height, width, nchannels)
     assert tf.norm(output_tensor_tf[1, 0, 0, :] - input_tensor[1, 0, 0, :]) < 1e-6
@@ -334,13 +334,13 @@ def test_warp_images():
     translation_tf = tf.constant(np.stack([translation0, translation1, translation2, translation3,
                                            translation4, translation5, translation6], axis=0), dtype=tf.float32)
 
-    backproject_layer = transformations3.BackprojectLayer(K, height, width, batch_size)
+    backproject_layer = transformations.BackprojectLayer(K, height, width, batch_size)
     points3d_hom_target = backproject_layer(depth_tf)
 
     raw_transformations = tf.concat([axisangle_tf, translation_tf], axis=1)
-    T = transformations3.make_transformation_matrix(raw_transformations, False)
+    T = transformations.make_transformation_matrix(raw_transformations, False)
 
-    warp_layer = transformations3.WarpLayer(K)
+    warp_layer = transformations.WarpLayer(K)
     new_images = warp_layer(test_img_tf, points3d_hom_target, T)
 
     assert new_images.shape == (batch_size, height, width, 3)
