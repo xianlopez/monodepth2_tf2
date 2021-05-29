@@ -30,9 +30,11 @@ class BackprojectLayer:
 
 
 class ProjectLayer:
-    def __init__(self, K):
+    def __init__(self, K, height, width, batch_size):
         # K: (3, 3) Intrinsics parameters matrix.
         self.K_ext = tf.concat([K, tf.zeros((3, 1), tf.float32)], axis=1)  # (3, 4)
+        self.K_ext = tf.reshape(self.K_ext, [1, 1, 1, 3, 4])
+        self.K_ext = tf.tile(self.K_ext, [batch_size, height, width, 1, 1])  # (batch_size, h, w, 3, 4)
 
     def __call__(self, points3d_hom):
         # points3d_hom: (batch_size, h, w, 4)
@@ -42,9 +44,9 @@ class ProjectLayer:
 
 
 class WarpLayer:
-    def __init__(self, K):
+    def __init__(self, K, height, width, batch_size):
         # K: (3, 3) Intrinsics parameters matrix.
-        self.project = ProjectLayer(K)
+        self.project = ProjectLayer(K, height, width, batch_size)
 
     def __call__(self, image_source, points3d_target, T_source_target):
         # image_source: (batch_size, h, w, 3)

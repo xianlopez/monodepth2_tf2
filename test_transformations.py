@@ -166,7 +166,7 @@ def test_project():
                 pixel_coords[b, i, j] = pixel_coords_hom[:2] / pixel_coords_hom[2]
 
     points3d_hom_tf = tf.constant(points3d_hom, tf.float32)
-    project_layer = transformations.ProjectLayer(K)
+    project_layer = transformations.ProjectLayer(K, height, width, batch_size)
     Tcw_tf = tf.constant(Tcw, tf.float32)
 
     points3d_hom_cam = transformations.transform3d(Tcw_tf, points3d_hom_tf)
@@ -340,7 +340,7 @@ def test_warp_images():
     raw_transformations = tf.concat([axisangle_tf, translation_tf], axis=1)
     T = transformations.make_transformation_matrix(raw_transformations, False)
 
-    warp_layer = transformations.WarpLayer(K)
+    warp_layer = transformations.WarpLayer(K, height, width, batch_size)
     new_images = warp_layer(test_img_tf, points3d_hom_target, T)
 
     assert new_images.shape == (batch_size, height, width, 3)

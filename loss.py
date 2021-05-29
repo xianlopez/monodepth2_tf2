@@ -64,7 +64,7 @@ class LossLayer:
         self.height = height
         self.width = width
         self.backproject = BackprojectLayer(K, height, width, batch_size)
-        self.warp = WarpLayer(K)
+        self.warp = WarpLayer(K, height, width, batch_size)
         self.smoothness_factor = 1e-3
 
     def __call__(self, disps, T_before_target, T_after_target, img_before, img_target, img_after):
