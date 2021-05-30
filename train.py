@@ -20,9 +20,10 @@ img_height = 192
 img_width = 640
 
 kitti_path = '/home/xian/kitti_data'
+train_list = os.path.join(os.path.dirname(__file__), 'splits', 'train_files.txt')
 batch_size = 8
 nworkers = 6
-reader_opts = ReaderOpts(kitti_path, batch_size, img_height, img_width, nworkers)
+reader_opts = ReaderOpts(kitti_path, train_list, batch_size, img_height, img_width, nworkers)
 
 nepochs = 20
 

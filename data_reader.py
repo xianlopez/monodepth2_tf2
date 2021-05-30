@@ -17,33 +17,43 @@ image_means /= 255.0
 image_means = np.reshape(image_means, [1, 1, 3])
 
 
-def get_images_paths(kitti_path):
+def get_image_path(kitti_path, sequence, frame_idx, side):
+    side_folder = 'image_02' if side == 'l' else 'image_03'
+    img_path = os.path.join(kitti_path, sequence, side_folder, 'data', '%010d.jpg' % frame_idx)
+    assert os.path.isfile(img_path)
+    return img_path
+
+
+def get_calib_dir(kitti_path, sequence):
+    return os.path.join(kitti_path, os.path.dirname(sequence))
+
+
+def get_velo_path(kitti_path, sequence, frame_idx):
+    velodyne_dir = os.path.join(kitti_path, sequence, 'velodyne_points', 'data')
+    velo_path = os.path.join(velodyne_dir, '%010d.bin' % frame_idx)
+    assert os.path.isfile(velo_path)
+    return velo_path
+
+
+def get_items_info(kitti_path, files_list):
     items_paths = []
-    for day in os.listdir(kitti_path):
-        n_sequences = 0
-        n_trios = 0
-        for drive in os.listdir(os.path.join(kitti_path, day)):
-            # Discard the calibration files:
-            if drive[-4:] == ".txt":
-                continue
-            n_sequences += 1
-            # TODO: consider using image_03 as well (right camera)
-            images_dir = os.path.join(kitti_path, day, drive, 'image_02', 'data')
-            velodyne_dir = os.path.join(kitti_path, day, drive, 'velodyne_points', 'data')
-            assert os.path.isdir(images_dir)
-            assert os.path.isdir(velodyne_dir)
-            frames = os.listdir(images_dir)
-            frames.sort()
-            n_trios += len(frames) - 1
-            for i in range(len(frames) - 2):
-                target_velo_name = os.path.splitext(frames[i + 1])[0] + '.bin'
-                items_paths.append([os.path.join(images_dir, frames[i]),  # previous image
-                                    os.path.join(images_dir, frames[i + 1]),  # target image
-                                    os.path.join(images_dir, frames[i + 2]),  # next image
-                                    os.path.join(velodyne_dir, target_velo_name),  # target velodyne
-                                    os.path.join(kitti_path, day)])  # calib dir
-        print('    Day ' + day + ': ' + str(n_trios) + ' trios in ' + str(n_sequences) + ' sequences.')
-    print('Total number of KITTI trios: ' + str(len(items_paths)))
+    with open(files_list, 'r') as fid:
+        lines = fid.readlines()
+    for line in lines:
+        line_split = line.split(' ')
+        assert len(line_split) == 3
+        sequence = line_split[0]
+        frame_idx = int(line_split[1])
+        assert frame_idx > 0
+        side = line_split[2].rstrip()  # rstrip needed to remove new line character
+        assert side == 'l' or side == 'r'
+        items_paths.append([get_image_path(kitti_path, sequence, frame_idx - 1, side),  # previous image
+                            get_image_path(kitti_path, sequence, frame_idx, side),  # target image
+                            get_image_path(kitti_path, sequence, frame_idx + 1, side),  # next image
+                            get_velo_path(kitti_path, sequence, frame_idx),  # target velodyne
+                            get_calib_dir(kitti_path, sequence),  # calib dir
+                            side])  # side, needed to get the depth
+    print('Total number of items: ' + str(len(items_paths)))
     return items_paths
 
 
@@ -51,18 +61,18 @@ def read_batch(batch_info, opts):
     batch_imgs_np = np.zeros((opts.batch_size, opts.img_height, opts.img_width, 9), np.float32)
     batch_depth_np = np.zeros((opts.batch_size, depth_height, depth_width), np.float32)
     for i in range(len(batch_info)):
-        item_paths = batch_info[i]
-        all_images, depth = read_item(item_paths, opts)
+        item_info = batch_info[i]
+        all_images, depth = read_item(item_info, opts)
         batch_imgs_np[i, :, :, :] = all_images
         batch_depth_np[i, :, :] = depth
     output_queue.put((batch_imgs_np, batch_depth_np))
 
 
-def read_item(item_paths, opts):
+def read_item(item_info, opts):
     # Read images:
-    img1 = cv2.imread(item_paths[0])
-    img2 = cv2.imread(item_paths[1])
-    img3 = cv2.imread(item_paths[2])
+    img1 = cv2.imread(item_info[0])
+    img2 = cv2.imread(item_info[1])
+    img3 = cv2.imread(item_info[2])
     # Resize:
     img1 = cv2.resize(img1, (opts.img_width, opts.img_height))
     img2 = cv2.resize(img2, (opts.img_width, opts.img_height))
@@ -79,12 +89,12 @@ def read_item(item_paths, opts):
     all_images = np.concatenate([img1, img2, img3], axis=2)  # (height, width, 9)
 
     # Depth:
-    depth = get_depth(item_paths[3], item_paths[4])
+    depth = get_depth(item_info[3], item_info[4], item_info[5])
 
     return all_images, depth
 
 
-def get_depth(velo_path, calib_dir):
+def get_depth(velo_path, calib_dir, side):
     # In some cases the velodyne file is missing. We'll just return a matrix of zeros
     # which will be interpreted as no depth information for every pixel.
     if not os.path.isfile(velo_path):
@@ -92,7 +102,9 @@ def get_depth(velo_path, calib_dir):
     assert os.path.isdir(calib_dir)
     assert os.path.isfile(os.path.join(calib_dir, 'calib_cam_to_cam.txt'))
     assert os.path.isfile(os.path.join(calib_dir, 'calib_velo_to_cam.txt'))
-    depth = generate_depth_map(calib_dir, velo_path)
+    assert side in ('l', 'r')
+    cam = 2 if side == 'l' else 3
+    depth = generate_depth_map(calib_dir, velo_path, cam)
     depth_resized = skimage.transform.resize(
         depth, (depth_height, depth_width), order=0, preserve_range=True, mode='constant')
     depth_resized = depth_resized.astype(np.float32)
@@ -105,18 +117,19 @@ def init_worker(queue):
 
 
 class ReaderOpts:
-    def __init__(self, kitti_path, batch_size, img_height, img_width, nworkers):
+    def __init__(self, kitti_path, files_list, batch_size, img_height, img_width, nworkers):
         self.kitti_path = kitti_path
         self.batch_size = batch_size
         self.img_height = img_height
         self.img_width = img_width
         self.nworkers = nworkers
+        self.files_list = files_list
 
 
 class AsyncReader:
     def __init__(self, opts):
         self.opts = opts
-        self.data_info = get_images_paths(opts.kitti_path)
+        self.data_info = get_items_info(opts.kitti_path, opts.files_list)
         # self.data_info = self.data_info[:200]
         self.nbatches = len(self.data_info) // opts.batch_size
 

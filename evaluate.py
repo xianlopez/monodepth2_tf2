@@ -16,9 +16,10 @@ img_height = 192
 img_width = 640
 
 kitti_path = '/home/xian/kitti_data'
+val_list = os.path.join(os.path.dirname(__file__), 'splits', 'val_files.txt')
 batch_size = 8
 nworkers = 6
-reader_opts = ReaderOpts(kitti_path, batch_size, img_height, img_width, nworkers)
+reader_opts = ReaderOpts(kitti_path, val_list, batch_size, img_height, img_width, nworkers)
 
 K = np.array([[0.58 * img_width, 0, 0.5 * img_width],
               [0, 1.92 * img_height, 0.5 * img_height],
