@@ -13,7 +13,6 @@ from drawing import display_training_basic
 from metrics import compute_metrics
 
 # TODO: Data augmentation
-# TODO: Validation
 # TODO: Learning rate schedule
 
 img_height = 192
@@ -21,9 +20,11 @@ img_width = 640
 
 kitti_path = '/home/xian/kitti_data'
 train_list = os.path.join(os.path.dirname(__file__), 'splits', 'train_files.txt')
+val_list = os.path.join(os.path.dirname(__file__), 'splits', 'val_files.txt')
 batch_size = 8
 nworkers = 6
-reader_opts = ReaderOpts(kitti_path, train_list, batch_size, img_height, img_width, nworkers)
+train_reader_opts = ReaderOpts(kitti_path, train_list, batch_size, img_height, img_width, nworkers)
+val_reader_opts = ReaderOpts(kitti_path, val_list, batch_size, img_height, img_width, nworkers)
 
 nepochs = 20
 
@@ -43,11 +44,11 @@ optimizer = tf.keras.optimizers.Adam(learning_rate=1e-4)
 
 loss_layer = LossLayer(K, img_height, img_width, batch_size)
 
-train_log_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'logs')
-if os.path.exists(train_log_dir):
-    shutil.rmtree(train_log_dir)
-train_summary_writer = tf.summary.create_file_writer(train_log_dir)
-train_summary_writer.set_as_default()
+log_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'logs')
+if os.path.exists(log_dir):
+    shutil.rmtree(log_dir)
+train_summary_writer = tf.summary.create_file_writer(os.path.join(log_dir, 'train'))
+val_summary_writer = tf.summary.create_file_writer(os.path.join(log_dir, 'val'))
 
 save_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'ckpts')
 
@@ -92,7 +93,58 @@ def train_step(batch_imgs, step_count):
     return loss_value, disps, image_from_before, image_from_after
 
 
-with AsyncReader(reader_opts) as train_reader:
+@tf.function
+def eval_step(batch_imgs, depth_gt):
+    # batch_imgs: (batch_size, height, width, 9) Three images concatenated on the channels dimension
+    # depth_gt: (batch_size, height, width)
+
+    img_before = batch_imgs[:, :, :, :3]
+    img_target = batch_imgs[:, :, :, 3:6]
+    img_after = batch_imgs[:, :, :, 6:]
+
+    disps = depth_net(img_target)  # disparities at different scales, in increasing resolution
+
+    # Loss:
+    T_before_target = pose_net(concat_images(img_before, img_target))  # (bs, 6)
+    T_target_after = pose_net(concat_images(img_target, img_after))  # (bs, 6)
+    matrixT_before_target = make_transformation_matrix(T_before_target, False)  # (bs, 4, 4)
+    matrixT_after_target = make_transformation_matrix(T_target_after, True)  # (bs, 4, 4)
+    loss_value, image_from_before, image_from_after = \
+        loss_layer(disps, matrixT_before_target, matrixT_after_target, img_before, img_target, img_after)
+
+    metrics = compute_metrics(disps[-1], depth_gt)
+
+    return loss_value, metrics, disps, image_from_before, image_from_after
+
+
+def evaluation_loop(val_reader, step_count):
+    print('Evaluating...')
+    eval_start = datetime.now()
+    accum_loss = 0.0
+    accum_metrics = np.zeros((7), np.float32)
+    for batch_idx in range(val_reader.nbatches):
+        batch_imgs, batch_depth_gt = val_reader.get_batch()
+        loss_value, metrics, disps, image_from_before, image_from_after = eval_step(batch_imgs, batch_depth_gt)
+        loss_value = loss_value.numpy()
+        accum_loss += loss_value
+        assert len(metrics) == len(accum_metrics)
+        for i in range(len(accum_metrics)):
+            accum_metrics[i] += metrics[i]
+    metrics = accum_metrics / float(val_reader.nbatches)
+    average_loss = accum_loss / float(val_reader.nbatches)
+    with val_summary_writer.as_default():
+        tf.summary.scalar('loss', average_loss, step=step_count)
+        tf.summary.scalar('abs_rel', metrics[0], step=step_count)
+        tf.summary.scalar('sq_rel', metrics[1], step=step_count)
+        tf.summary.scalar('rmse', metrics[2], step=step_count)
+        tf.summary.scalar('rmse_log', metrics[3], step=step_count)
+        tf.summary.scalar('a1', metrics[4], step=step_count)
+        tf.summary.scalar('a2', metrics[5], step=step_count)
+        tf.summary.scalar('a3', metrics[6], step=step_count)
+    print('Evaluation computed in ' + str(datetime.now() - eval_start))
+
+
+with AsyncReader(train_reader_opts) as train_reader, AsyncReader(val_reader_opts) as val_reader:
     step_count = 0
     for epoch in range(nepochs):
         print("\nStart epoch ", epoch + 1)
@@ -112,6 +164,8 @@ with AsyncReader(reader_opts) as train_reader:
             step_count += 1
         stdout.write('\n')
         print('Epoch computed in ' + str(datetime.now() - epoch_start))
+
+        evaluation_loop(val_reader, step_count)
 
         # Save models:
         print('Saving models')
