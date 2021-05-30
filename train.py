@@ -13,7 +13,6 @@ from drawing import display_training_basic
 from metrics import compute_metrics
 
 # TODO: Data augmentation
-# TODO: Learning rate schedule
 
 img_height = 192
 img_width = 640
@@ -149,6 +148,9 @@ with AsyncReader(train_reader_opts) as train_reader, AsyncReader(val_reader_opts
     for epoch in range(nepochs):
         print("\nStart epoch ", epoch + 1)
         epoch_start = datetime.now()
+        if epoch == 15:
+            optimizer.learning_rate = 1e-5
+            print('Changing learning rate to: %.2e' % optimizer.learning_rate)
         for batch_idx in range(train_reader.nbatches):
             batch_imgs, batch_depth_gt = train_reader.get_batch()
             step_count_tf = tf.convert_to_tensor(step_count, dtype=tf.int64)
