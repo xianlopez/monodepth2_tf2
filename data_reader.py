@@ -16,6 +16,11 @@ image_means = np.array([123.0, 117.0, 104.0])
 image_means /= 255.0
 image_means = np.reshape(image_means, [1, 1, 3])
 
+T_left_right = np.eye(4, dtype=np.float32)
+T_left_right[0, 3] = 0.1
+T_right_left = np.eye(4, dtype=np.float32)
+T_right_left[0, 3] = -0.1
+
 
 def get_image_path(kitti_path, sequence, frame_idx, side):
     side_folder = 'image_02' if side == 'l' else 'image_03'
@@ -47,9 +52,11 @@ def get_items_info(kitti_path, files_list):
         assert frame_idx > 0
         side = line_split[2].rstrip()  # rstrip needed to remove new line character
         assert side == 'l' or side == 'r'
+        other_side = 'l' if side == 'r' else 'r'
         items_paths.append([get_image_path(kitti_path, sequence, frame_idx - 1, side),  # previous image
                             get_image_path(kitti_path, sequence, frame_idx, side),  # target image
                             get_image_path(kitti_path, sequence, frame_idx + 1, side),  # next image
+                            get_image_path(kitti_path, sequence, frame_idx, other_side),  # opposite image
                             get_velo_path(kitti_path, sequence, frame_idx),  # target velodyne
                             get_calib_dir(kitti_path, sequence),  # calib dir
                             side])  # side, needed to get the depth
@@ -58,14 +65,16 @@ def get_items_info(kitti_path, files_list):
 
 
 def read_batch(batch_info, opts):
-    batch_imgs_np = np.zeros((opts.batch_size, opts.img_height, opts.img_width, 9), np.float32)
+    batch_imgs_np = np.zeros((opts.batch_size, opts.img_height, opts.img_width, 12), np.float32)
+    batch_T_opposite_target = np.zeros((opts.batch_size, 4, 4), np.float32)
     batch_depth_np = np.zeros((opts.batch_size, depth_height, depth_width), np.float32)
     for i in range(len(batch_info)):
         item_info = batch_info[i]
-        all_images, depth = read_item(item_info, opts)
+        all_images, T_opposite_target, depth = read_item(item_info, opts)
         batch_imgs_np[i, :, :, :] = all_images
+        batch_T_opposite_target[i, :, :] = T_opposite_target
         batch_depth_np[i, :, :] = depth
-    output_queue.put((batch_imgs_np, batch_depth_np))
+    output_queue.put((batch_imgs_np, batch_T_opposite_target, batch_depth_np))
 
 
 def read_item(item_info, opts):
@@ -73,25 +82,36 @@ def read_item(item_info, opts):
     img1 = cv2.imread(item_info[0])
     img2 = cv2.imread(item_info[1])
     img3 = cv2.imread(item_info[2])
+    img4 = cv2.imread(item_info[3])
     # Resize:
     img1 = cv2.resize(img1, (opts.img_width, opts.img_height))
     img2 = cv2.resize(img2, (opts.img_width, opts.img_height))
     img3 = cv2.resize(img3, (opts.img_width, opts.img_height))
+    img4 = cv2.resize(img4, (opts.img_width, opts.img_height))
     # Make pixel values between 0 and 1:
     img1 = img1.astype(np.float32) / 255.0
     img2 = img2.astype(np.float32) / 255.0
     img3 = img3.astype(np.float32) / 255.0
+    img4 = img4.astype(np.float32) / 255.0
     # Subtract mean:
     img1 = img1 - image_means
     img2 = img2 - image_means
     img3 = img3 - image_means
+    img4 = img4 - image_means
     # Concatenate:
-    all_images = np.concatenate([img1, img2, img3], axis=2)  # (height, width, 9)
+    all_images = np.concatenate([img1, img2, img3, img4], axis=2)  # (height, width, 12)
 
     # Depth:
-    depth = get_depth(item_info[3], item_info[4], item_info[5])
+    side = item_info[6]
+    depth = get_depth(item_info[4], item_info[5], side)
 
-    return all_images, depth
+    # Transformation between stereo pair (depends if the target image is left or right)
+    if side == 'r':
+        T_opposite_target = T_left_right
+    else:
+        T_opposite_target = T_right_left
+
+    return all_images, T_opposite_target, depth
 
 
 def get_depth(velo_path, calib_dir, side):
@@ -167,7 +187,7 @@ class AsyncReader:
             self.next_batch_idx += 1
 
     def get_batch(self):
-        imgs, depth = self.output_queue.get()
+        imgs, batch_T_opposite_target, depth = self.output_queue.get()
         self.add_fetch_task()
-        return imgs, depth
+        return imgs, batch_T_opposite_target, depth
 

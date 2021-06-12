@@ -67,18 +67,22 @@ class LossLayer:
         self.warp = WarpLayer(K, height, width, batch_size)
         self.smoothness_factor = 1e-3
 
-    def __call__(self, disps, T_before_target, T_after_target, img_before, img_target, img_after):
+    def __call__(self, disps, T_before_target, T_after_target, T_opposite_target,
+                 img_before, img_target, img_after, img_opposite):
         # disps: list with tensors of shape (batch_size, ?, ?, 1)
         # T_before_target: (batch_size, 4, 4)
         # T_after_target: (batch_size, 4, 4)
+        # T_opposite_target: (batch_size, 4, 4)
         # img_before: (batch_size, height, width, 3)
         # img_target: (batch_size, height, width, 3)
         # img_after: (batch_size, height, width, 3)
+        # img_opposite: (batch_size, height, width, 3)
         num_scales = len(disps)
         loss = tf.zeros((), tf.float32)
 
         image_from_before = None
         image_from_after = None
+        image_from_opposite = None
 
         for scale_idx in range(num_scales):
             scale_factor = 2.0 ** scale_idx
@@ -95,21 +99,25 @@ class LossLayer:
             points3d_hom_target = self.backproject(depth)  # (bs, h, w, 4)
             target_image_from_before = self.warp(img_before, points3d_hom_target, T_before_target)
             target_image_from_after = self.warp(img_after, points3d_hom_target, T_after_target)
+            target_image_from_opposite = self.warp(img_opposite, points3d_hom_target, T_opposite_target)
 
             if scale_idx == 0:
                 image_from_before = target_image_from_before
                 image_from_after = target_image_from_after
+                image_from_opposite = target_image_from_opposite
 
             # All the losses below have shape (bs, h, w)
             reprojection_loss_before = compute_reprojection_loss(img_target, target_image_from_before)
             reprojection_loss_after = compute_reprojection_loss(img_target, target_image_from_after)
+            reprojection_loss_opposite = compute_reprojection_loss(img_target, target_image_from_opposite)
 
             identity_loss_before = compute_reprojection_loss(img_target, img_before)
             identity_loss_after = compute_reprojection_loss(img_target, img_after)
+            identity_loss_opposite = compute_reprojection_loss(img_target, img_opposite)  # TODO: Is this necessary?
 
             # (bs, h, w, 4):
-            reprojection_losses = tf.stack([reprojection_loss_before, reprojection_loss_after,
-                                            identity_loss_before, identity_loss_after], axis=-1)
+            reprojection_losses = tf.stack([reprojection_loss_before, reprojection_loss_after, reprojection_loss_opposite,
+                                            identity_loss_before, identity_loss_after, identity_loss_opposite], axis=-1)
 
             min_reprojection_loss = tf.reduce_min(reprojection_losses, axis=-1)  # (bs, h, w)
 
@@ -124,4 +132,4 @@ class LossLayer:
 
         loss /= float(num_scales)
 
-        return loss, image_from_before, image_from_after
+        return loss, image_from_before, image_from_after, image_from_opposite

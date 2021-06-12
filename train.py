@@ -9,7 +9,7 @@ from data_reader import AsyncReader, ReaderOpts
 from transformations import make_transformation_matrix, concat_images
 from loss import LossLayer
 from models import build_depth_net, build_pose_net
-from drawing import display_training_basic
+from drawing import display_training
 from metrics import compute_metrics
 
 # TODO: Data augmentation
@@ -67,11 +67,13 @@ def compute_and_log_metrics(disp_pred, depth_gt, step_count):
 
 
 @tf.function
-def train_step(batch_imgs, step_count):
-    # batch_imgs: (batch_size, height, width, 9) Three images concatenated on the channels dimension
+def train_step(batch_imgs, batch_T_opposite_target, step_count):
+    # batch_imgs: (batch_size, height, width, 12) Four images concatenated on the channels dimension
+    # batch_T_opposite_target: (batch_size, 4, 4) rotation-vector plus translation
     img_before = batch_imgs[:, :, :, :3]
     img_target = batch_imgs[:, :, :, 3:6]
-    img_after = batch_imgs[:, :, :, 6:]
+    img_after = batch_imgs[:, :, :, 6:9]
+    img_opposite = batch_imgs[:, :, :, 9:]
 
     with tf.GradientTape() as tape:
         disps = depth_net(img_target)  # disparities at different scales, in increasing resolution
@@ -80,8 +82,9 @@ def train_step(batch_imgs, step_count):
         T_target_after = pose_net(concat_images(img_target, img_after))  # (bs, 6)
         matrixT_before_target = make_transformation_matrix(T_before_target, False)  # (bs, 4, 4)
         matrixT_after_target = make_transformation_matrix(T_target_after, True)  # (bs, 4, 4)
-        loss_value, image_from_before, image_from_after =\
-            loss_layer(disps, matrixT_before_target, matrixT_after_target, img_before, img_target, img_after)
+        loss_value, image_from_before, image_from_after, image_from_opposite =\
+            loss_layer(disps, matrixT_before_target, matrixT_after_target, batch_T_opposite_target,
+                       img_before, img_target, img_after, img_opposite)
 
     grads = tape.gradient(loss_value, trainable_weights)
     optimizer.apply_gradients(zip(grads, trainable_weights))
@@ -89,17 +92,19 @@ def train_step(batch_imgs, step_count):
     with train_summary_writer.as_default():
         tf.summary.scalar('loss', loss_value, step=step_count)
 
-    return loss_value, disps, image_from_before, image_from_after
+    return loss_value, disps, image_from_before, image_from_after, image_from_opposite
 
 
 @tf.function
-def eval_step(batch_imgs, depth_gt):
-    # batch_imgs: (batch_size, height, width, 9) Three images concatenated on the channels dimension
+def eval_step(batch_imgs, batch_T_opposite_target, depth_gt):
+    # batch_imgs: (batch_size, height, width, 12) Four images concatenated on the channels dimension
+    # batch_T_opposite_target: (batch_size, 4, 4) rotation-vector plus translation
     # depth_gt: (batch_size, height, width)
 
     img_before = batch_imgs[:, :, :, :3]
     img_target = batch_imgs[:, :, :, 3:6]
-    img_after = batch_imgs[:, :, :, 6:]
+    img_after = batch_imgs[:, :, :, 6:9]
+    img_opposite = batch_imgs[:, :, :, 9:]
 
     disps = depth_net(img_target)  # disparities at different scales, in increasing resolution
 
@@ -108,12 +113,13 @@ def eval_step(batch_imgs, depth_gt):
     T_target_after = pose_net(concat_images(img_target, img_after))  # (bs, 6)
     matrixT_before_target = make_transformation_matrix(T_before_target, False)  # (bs, 4, 4)
     matrixT_after_target = make_transformation_matrix(T_target_after, True)  # (bs, 4, 4)
-    loss_value, image_from_before, image_from_after = \
-        loss_layer(disps, matrixT_before_target, matrixT_after_target, img_before, img_target, img_after)
+    loss_value, image_from_before, image_from_after, image_from_opposite = \
+        loss_layer(disps, matrixT_before_target, matrixT_after_target, batch_T_opposite_target,
+                   img_before, img_target, img_after, img_opposite)
 
     metrics = compute_metrics(disps[-1], depth_gt)
 
-    return loss_value, metrics, disps, image_from_before, image_from_after
+    return loss_value, metrics, disps, image_from_before, image_from_after, image_from_opposite
 
 
 def evaluation_loop(val_reader, step_count):
@@ -122,8 +128,9 @@ def evaluation_loop(val_reader, step_count):
     accum_loss = 0.0
     accum_metrics = np.zeros((7), np.float32)
     for batch_idx in range(val_reader.nbatches):
-        batch_imgs, batch_depth_gt = val_reader.get_batch()
-        loss_value, metrics, disps, image_from_before, image_from_after = eval_step(batch_imgs, batch_depth_gt)
+        batch_imgs, batch_T_opposite_target, batch_depth_gt = val_reader.get_batch()
+        loss_value, metrics, disps, image_from_before, image_from_after, image_from_opposite =\
+            eval_step(batch_imgs, batch_T_opposite_target, batch_depth_gt)
         loss_value = loss_value.numpy()
         accum_loss += loss_value
         assert len(metrics) == len(accum_metrics)
@@ -152,17 +159,18 @@ with AsyncReader(train_reader_opts) as train_reader, AsyncReader(val_reader_opts
             optimizer.learning_rate = 1e-5
             print('Changing learning rate to: %.2e' % optimizer.learning_rate)
         for batch_idx in range(train_reader.nbatches):
-            batch_imgs, batch_depth_gt = train_reader.get_batch()
+            batch_imgs, batch_T_opposite_target, batch_depth_gt = train_reader.get_batch()
             step_count_tf = tf.convert_to_tensor(step_count, dtype=tf.int64)
             batch_imgs_tf = tf.convert_to_tensor(batch_imgs, dtype=tf.float32)
-            loss_value, disps, image_from_before, image_from_after = train_step(batch_imgs_tf, step_count_tf)
+            loss_value, disps, image_from_before, image_from_after, image_from_opposite =\
+                train_step(batch_imgs_tf, batch_T_opposite_target, step_count_tf)
             depth_gt_tf = tf.convert_to_tensor(batch_depth_gt, dtype=tf.float32)
             compute_and_log_metrics(disps[-1], depth_gt_tf, step_count_tf)
             train_summary_writer.flush()
             stdout.write("\rbatch %d/%d, loss: %.2e    " % (batch_idx + 1, train_reader.nbatches, loss_value.numpy()))
             stdout.flush()
             if (batch_idx + 1) % 10 == 0:
-                display_training_basic(batch_imgs, disps, batch_depth_gt)
+                display_training(batch_imgs, disps[-1], image_from_before, image_from_after, image_from_opposite)
             step_count += 1
         stdout.write('\n')
         print('Epoch computed in ' + str(datetime.now() - epoch_start))

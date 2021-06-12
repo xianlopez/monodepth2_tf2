@@ -5,7 +5,7 @@ from models import disp2depth
 
 # We display the first element of the batch.
 def display_training_basic(batch_imgs, disps, depth_gt):
-    # batch_imgs: (batch_size, height, width, 9)
+    # batch_imgs: (batch_size, height, width, 12)
     # disps: list with disparities, in increasing resolution. Each element has shape
     # (batch_size, height / 2^s, width / 2^s, 1), being s the scale index.
     # image_from_before: (batch_size, height, width, 3)
@@ -34,29 +34,33 @@ def display_training_basic(batch_imgs, disps, depth_gt):
 
 
 # We display the first element of the batch.
-def display_training(batch_imgs, disps, image_from_before, image_from_after):
-    # batch_imgs: (batch_size, height, width, 9)
-    # disps: list with disparities, in increasing resolution. Each element has shape
-    # (batch_size, height / 2^s, width / 2^s, 1), being s the scale index.
+def display_training(batch_imgs, disparity, image_from_before, image_from_after, image_from_opposite):
+    # batch_imgs: (batch_size, height, width, 12)
+    # disparity: (batch_size, height, width, 1)
     # image_from_before: (batch_size, height, width, 3)
     # image_from_after: (batch_size, height, width, 3)
+    # image_from_opposite: (batch_size, height, width, 3)
 
     previous_img = batch_imgs[0, :, :, :3] + image_means
     target_img = batch_imgs[0, :, :, 3:6] + image_means
-    next_img = batch_imgs[0, :, :, 6:] + image_means
+    next_img = batch_imgs[0, :, :, 6:9] + image_means
+    opposite_img = batch_imgs[0, :, :, 9:] + image_means
     cv2.imshow("previous", previous_img)
     cv2.imshow("target", target_img)
     cv2.imshow("next", next_img)
+    cv2.imshow("opposite", opposite_img)
 
-    for s in range(len(disps)):
-        disparity = disps[s][0, :, :, :].numpy()
-        disparity /= np.max(disparity)
-        cv2.imshow('disp' + str(s), disparity)
+    disparity = disparity[0, :, :, :].numpy()
+    disparity /= np.max(disparity)
+    cv2.imshow('disparity', disparity)
 
     img_from_before = image_from_before[0, :, :, :].numpy() + image_means
     cv2.imshow('img_from_before', img_from_before)
 
     img_from_after = image_from_after[0, :, :, :].numpy() + image_means
     cv2.imshow('img_from_after', img_from_after)
+
+    img_from_opposite = image_from_opposite[0, :, :, :].numpy() + image_means
+    cv2.imshow('img_from_opposite', img_from_opposite)
 
     cv2.waitKey(1)
